@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <title>Saltbox Admin Login</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ink: #0b0f0d;
+      --ink-2: #121815;
+      --ink-3: #1a221e;
+      --salt: #f2eee4;
+      --salt-dim: #96a199;
+      --line: rgba(242, 238, 228, .12);
+      --green: #2ae08a;
+      --green-2: #16b86c;
+      --red: #f2766b;
+      --display: "Bricolage Grotesque", "Inter", system-ui, sans-serif;
+      --body: "Inter", system-ui, sans-serif;
+      --mono: "Space Mono", ui-monospace, monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+    body { min-width: 320px; min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 28px; background: var(--ink); color: var(--salt); font-family: var(--body); }
+    body::before { content: ""; position: fixed; inset: 0; z-index: -2; pointer-events: none; opacity: .055; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+    body::after { content: ""; position: fixed; z-index: -1; pointer-events: none; width: min(70vw, 760px); aspect-ratio: 1; right: -18%; top: -24%; border-radius: 50%; background: radial-gradient(circle, rgba(42,224,138,.2), transparent 65%); filter: blur(44px); }
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+    a { color: inherit; }
+
+    .login { width: min(100%, 430px); }
+    .brand { display: inline-flex; align-items: center; gap: 10px; margin-bottom: 34px; text-decoration: none; font-family: var(--display); font-size: 1.35rem; font-weight: 700; letter-spacing: -.03em; }
+    .mark { width: 31px; height: 31px; border-radius: 9px; display: grid; place-items: center; background: linear-gradient(150deg, var(--green), var(--green-2)); box-shadow: 0 6px 22px rgba(42,224,138,.4); }
+    .mark::after { content: ""; width: 11px; height: 11px; border-radius: 3px; background: var(--ink); }
+    .kicker { display: flex; align-items: center; gap: 9px; color: var(--green); font-family: var(--mono); font-size: .66rem; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }
+    .kicker::before { content: ""; width: 23px; height: 1px; background: var(--green); }
+    h1 { margin: 9px 0 12px; font-family: var(--display); font-size: clamp(2.2rem, 9vw, 3.25rem); line-height: .96; letter-spacing: -.045em; }
+    .intro { margin: 0 0 25px; color: var(--salt-dim); font-size: .95rem; line-height: 1.6; }
+    .panel { border: 1px solid var(--line); border-radius: 18px; padding: 26px; background: rgba(18,24,21,.88); box-shadow: 0 30px 70px -55px #000; }
+    .field { margin-bottom: 17px; }
+    label { display: block; margin-bottom: 8px; color: var(--salt-dim); font-family: var(--mono); font-size: .68rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+    input { width: 100%; border: 1px solid var(--line); border-radius: 12px; outline: none; padding: 13px 15px; color: var(--salt); background: var(--ink); transition: border-color .2s, box-shadow .2s; }
+    input:focus { border-color: rgba(42,224,138,.65); box-shadow: 0 0 0 3px rgba(42,224,138,.1); }
+    .submit { width: 100%; border: 0; border-radius: 999px; padding: 14px 18px; color: #06150d; background: var(--green); font-weight: 700; box-shadow: 0 12px 34px rgba(42,224,138,.24); }
+    .submit:disabled { cursor: not-allowed; opacity: .62; }
+    .status { min-height: 22px; margin: 16px 0 0; color: var(--salt-dim); font-size: .88rem; line-height: 1.5; }
+    .status.error { color: var(--red); }
+    .status.success { color: var(--green); }
+    .back { display: inline-flex; margin-top: 18px; color: var(--salt-dim); text-decoration: none; font-size: .86rem; transition: color .2s; }
+    .back:hover { color: var(--green); }
+
+    @media (max-width: 460px) {
+      body { padding: 22px; place-items: start center; }
+      .panel { padding: 22px; border-radius: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="login">
+    <a class="brand" href="index.html" aria-label="Saltbox home"><span class="mark" aria-hidden="true"></span>Saltbox</a>
+    <div class="kicker">Admin</div>
+    <h1>Sign in.</h1>
+    <p class="intro">Use the admin account created in Supabase Auth.</p>
+
+    <form class="panel" id="loginForm">
+      <div class="field">
+        <label for="email">Email address</label>
+        <input id="email" name="email" type="email" autocomplete="email" required>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+      </div>
+      <button class="submit" id="submitButton" type="submit">Log in</button>
+      <p class="status" id="loginStatus" role="status" aria-live="polite"></p>
+    </form>
+
+    <a class="back" href="index.html">Back to site</a>
+  </main>
+
+  <script type="module">
+    import { supabase, supabaseReady, supabaseConfigError } from "./supabase-client.js";
+
+    const form = document.getElementById("loginForm");
+    const submitButton = document.getElementById("submitButton");
+    const status = document.getElementById("loginStatus");
+    const params = new URLSearchParams(window.location.search);
+    const requestedRedirect = params.get("redirect") || "admin.html";
+    const redirectTo = requestedRedirect.includes("://") || requestedRedirect.startsWith("//")
+      ? "admin.html"
+      : requestedRedirect;
+
+    function setStatus(message, state = "") {
+      status.textContent = message;
+      status.className = `status ${state}`.trim();
+    }
+
+    if (!supabaseReady) {
+      submitButton.disabled = true;
+      setStatus(supabaseConfigError, "error");
+    } else {
+      const { data } = await supabase.auth.getSession();
+      if (data.session) window.location.replace(redirectTo);
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!supabaseReady) return;
+
+      submitButton.disabled = true;
+      setStatus("Checking credentials...");
+
+      const { error } = await supabase.auth.signInWithPassword({
+        email: form.email.value.trim(),
+        password: form.password.value,
+      });
+
+      if (error) {
+        submitButton.disabled = false;
+        setStatus(error.message, "error");
+        return;
+      }
+
+      setStatus("Signed in. Opening admin...", "success");
+      window.location.replace(redirectTo);
+    });
+  </script>
+</body>
+</html>

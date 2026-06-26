@@ -323,11 +323,14 @@
   .quote-card{background:var(--ink-2);border:1px solid var(--line);border-radius:26px;padding:42px;box-shadow:0 42px 100px -54px rgba(42,224,138,.35);}
   .quote-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 20px;}
   .field.full{grid-column:1/-1;}
-  .field select{width:100%;background:var(--ink);border:1px solid var(--line);border-radius:12px;padding:13px 15px;color:var(--salt);font-family:var(--body);font-size:.98rem;transition:border-color .25s;appearance:none;}
+  .field select{width:100%;max-width:100%;background:var(--ink);border:1px solid var(--line);border-radius:12px;padding:13px 42px 13px 15px;color:var(--salt);font-family:var(--body);font-size:.98rem;line-height:1.4;transition:border-color .25s;appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--salt-dim) 50%),linear-gradient(135deg,var(--salt-dim) 50%,transparent 50%);background-position:calc(100% - 20px) 50%,calc(100% - 14px) 50%;background-size:6px 6px,6px 6px;background-repeat:no-repeat;}
   .field select:focus{outline:none;border-color:var(--green);}
   .quote-actions{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-top:8px;}
   .quote-actions .btn{display:inline-flex;justify-content:center;}
   .quote-note{color:var(--salt-dim);font-size:.92rem;}
+  .quote-status{display:block;margin-top:16px;color:var(--salt-dim);font-size:.92rem;line-height:1.5;}
+  .quote-status.success{color:var(--green);}
+  .quote-status.error{color:#F2766B;}
 
   /* footer */
   .foot{border-top:1px solid var(--line);padding:64px 0 40px;position:relative;z-index:2;}
@@ -717,7 +720,7 @@
         <h2>Tell us about your business.</h2>
         <p>Answer a few quick questions and we&#39;ll send back a free quote within 48 hours.</p>
       </div>
-      <form class="quote-card reveal" name="quote-request" method="POST" data-netlify="true">
+      <form class="quote-card reveal" id="quoteForm" name="quote-request" method="POST" data-netlify="true">
         <input type="hidden" name="form-name" value="quote-request">
         <div class="quote-grid">
           <div class="field">
@@ -737,8 +740,8 @@
             <input id="quote-type" name="business-type" type="text" placeholder="Coffee shop, contractor, boutique..." required>
           </div>
           <div class="field full">
-            <label for="quote-project">Do you need a brand-new website, a redesign, or help with an existing site?</label>
-            <select id="quote-project" name="project-type" required>
+            <label for="project_type">Do you need a brand-new website, a redesign, or help with an existing site?</label>
+            <select id="project_type" name="project_type" required>
               <option value="">Select one</option>
               <option>Brand-new website</option>
               <option>Website redesign</option>
@@ -747,8 +750,8 @@
             </select>
           </div>
           <div class="field">
-            <label for="quote-package">Which package are you most interested in?</label>
-            <select id="quote-package" name="package-interest">
+            <label for="package_interest">Which package are you most interested in?</label>
+            <select id="package_interest" name="package_interest">
               <option>Not sure yet</option>
               <option>Starter</option>
               <option>Standard</option>
@@ -756,22 +759,28 @@
             </select>
           </div>
           <div class="field">
-            <label for="quote-care">Do you want monthly care after launch?</label>
-            <select id="quote-care" name="monthly-care">
+            <label for="care_plan_interest">Do you want monthly care after launch?</label>
+            <select id="care_plan_interest" name="care_plan_interest">
               <option>Not sure yet</option>
-              <option>Starter Care</option>
-              <option>Standard Care</option>
-              <option>Growth Care</option>
+              <option>Starter Care &mdash; $75/month</option>
+              <option>Standard Care &mdash; $150/month</option>
+              <option>Growth Care &mdash; $300+/month</option>
               <option>No</option>
             </select>
           </div>
           <div class="field full">
-            <label for="quote-features">What pages or features do you need?</label>
-            <textarea id="quote-features" name="pages-features" rows="4" placeholder="Services, gallery, booking, online store, menu, contact form..."></textarea>
+            <label for="features_needed">What pages or features do you need?</label>
+            <textarea id="features_needed" name="features_needed" rows="4" placeholder="Services, gallery, booking, online store, menu, contact form..."></textarea>
           </div>
           <div class="field">
-            <label for="quote-timeline">What is your ideal timeline?</label>
-            <input id="quote-timeline" name="timeline" type="text" placeholder="ASAP, next month, before an event...">
+            <label for="ideal_timeline">What is your ideal timeline?</label>
+            <select id="ideal_timeline" name="ideal_timeline">
+              <option>ASAP</option>
+              <option>2&ndash;4 weeks</option>
+              <option>1&ndash;2 months</option>
+              <option>3+ months</option>
+              <option>Not sure yet</option>
+            </select>
           </div>
           <div class="field">
             <label for="quote-notes">Anything else we should know?</label>
@@ -779,9 +788,10 @@
           </div>
         </div>
         <div class="quote-actions">
-          <button class="btn btn-primary" type="submit"><span class="btn-i">Send my quote request</span></button>
+          <button class="btn btn-primary" id="quoteSubmit" type="submit"><span class="btn-i">Send my quote request</span></button>
           <span class="quote-note">No pressure, no spam &mdash; just a real quote.</span>
         </div>
+        <span class="quote-status" id="quoteStatus" role="status" aria-live="polite"></span>
       </form>
     </div>
   </section>
@@ -977,6 +987,55 @@
   story.addEventListener('touchmove',onMobileTouchMove,{passive:false});
   onScroll();
 })();
+</script>
+
+<script type="module">
+import { supabase, supabaseReady } from "./supabase-client.js";
+
+const quoteForm = document.getElementById("quoteForm");
+const quoteSubmit = document.getElementById("quoteSubmit");
+const quoteStatus = document.getElementById("quoteStatus");
+
+function setQuoteStatus(message, state = "") {
+  if (!quoteStatus) return;
+  quoteStatus.textContent = message;
+  quoteStatus.className = `quote-status ${state}`.trim();
+}
+
+if (quoteForm && supabaseReady) {
+  quoteForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    quoteSubmit.disabled = true;
+    setQuoteStatus("Sending your request...");
+
+    const fields = quoteForm.elements;
+    const payload = {
+      name: fields.name.value.trim(),
+      email: fields.email.value.trim(),
+      business_name: fields["business-name"].value.trim(),
+      business_type: fields["business-type"].value.trim(),
+      project_type: fields.project_type.value,
+      package_interest: fields.package_interest.value,
+      care_plan_interest: fields.care_plan_interest.value,
+      features_needed: fields.features_needed.value.trim(),
+      ideal_timeline: fields.ideal_timeline.value,
+      notes: fields.notes.value.trim(),
+    };
+
+    const { error } = await supabase.from("quote_requests").insert(payload);
+
+    quoteSubmit.disabled = false;
+
+    if (error) {
+      console.error("Supabase quote request insert failed:", error);
+      setQuoteStatus(error.message || "We could not send your request. Please try again or email hello@saltbox.design.", "error");
+      return;
+    }
+
+    quoteForm.reset();
+    setQuoteStatus("Thanks. Your quote request was sent.", "success");
+  });
+}
 </script>
 
 <script>

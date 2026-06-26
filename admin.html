@@ -55,11 +55,15 @@
     .page-kicker { display: flex; align-items: center; gap: 9px; color: var(--green); font-family: var(--mono); font-size: .66rem; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }
     .page-kicker::before { content: ""; width: 23px; height: 1px; background: var(--green); }
     h1 { margin: 7px 0 0; font-family: var(--display); font-size: clamp(2rem, 4vw, 3rem); line-height: 1; letter-spacing: -.045em; }
+    .top-actions { display: flex; align-items: center; gap: 12px; }
     .search { width: min(320px, 100%); position: relative; }
     .search svg { position: absolute; top: 50%; left: 13px; transform: translateY(-50%); color: var(--salt-dim); pointer-events: none; }
     .search input { width: 100%; border: 1px solid var(--line); border-radius: 10px; outline: none; padding: 12px 13px 12px 39px; color: var(--salt); background: rgba(18,24,21,.86); font-size: .86rem; transition: border-color .2s, box-shadow .2s; }
     .search input::placeholder { color: var(--salt-dim); }
     .search input:focus { border-color: rgba(42,224,138,.65); box-shadow: 0 0 0 3px rgba(42,224,138,.1); }
+    .session-email { max-width: 190px; color: var(--salt-dim); font-family: var(--mono); font-size: .65rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .logout-btn { border: 1px solid var(--line); border-radius: 999px; padding: 10px 14px; color: var(--salt); background: transparent; font-size: .8rem; font-weight: 700; transition: border-color .2s, color .2s; }
+    .logout-btn:hover { border-color: var(--green); color: var(--green); }
     .preview-note { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 28px; padding: 13px 15px; border: 1px solid rgba(42,224,138,.25); border-radius: 11px; color: #c7d8ce; background: linear-gradient(90deg, rgba(42,224,138,.10), rgba(42,224,138,.035)); font-size: .86rem; line-height: 1.5; }
     .preview-note strong { color: var(--green); }
     .preview-note svg { flex: none; margin-top: 2px; color: var(--green); }
@@ -99,6 +103,8 @@
     .priority.low { color: var(--green); }
     .empty { display: none; padding: 17px 21px; color: var(--salt-dim); font-size: .85rem; }
     .empty.visible { display: block; }
+    .table-state td { color: var(--salt-dim); white-space: normal; }
+    .table-state.error td { color: var(--red); }
 
     @media (max-width: 1040px) { .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     @media (max-width: 760px) {
@@ -112,6 +118,7 @@
       .nav-item svg { display: none; }
       .main { padding-top: 25px; }
       .topbar { align-items: flex-start; flex-direction: column; margin-bottom: 22px; }
+      .top-actions { width: 100%; flex-wrap: wrap; }
       .search { width: 100%; }
       .preview-note { margin-bottom: 20px; }
       .panel-head { padding: 17px; }
@@ -142,55 +149,66 @@
     <main class="main" id="dashboard">
       <header class="topbar">
         <div><div class="page-kicker">Overview</div><h1>Good morning, Saltbox.</h1></div>
-        <label class="search"><span class="sr-only"></span><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="table-search" type="search" placeholder="Search requests, tickets, customers…" aria-label="Search dashboard tables"></label>
+        <div class="top-actions">
+          <label class="search"><span class="sr-only"></span><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="table-search" type="search" placeholder="Search requests, tickets, customers…" aria-label="Search dashboard tables"></label>
+          <span class="session-email" id="sessionEmail"></span>
+          <button class="logout-btn" id="logoutButton" type="button">Log out</button>
+        </div>
       </header>
 
-      <section class="preview-note" aria-label="Preview notice"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 10v5M12 7h.01"/></svg><div><strong>Admin UI preview</strong> — connect Supabase Auth before using with real client data.</div></section>
+      <section class="preview-note" aria-label="Preview notice"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 10v5M12 7h.01"/></svg><div><strong>Admin panel</strong> — quote requests load from Supabase.</div></section>
 
       <section class="metrics" aria-label="Dashboard summary">
-        <article class="metric"><div class="metric-head"><span>New quote requests</span><span class="metric-icon">↗</span></div><div class="metric-value">12</div><div class="metric-detail"><span class="up">+4</span> since last week</div></article>
-        <article class="metric"><div class="metric-head"><span>Open tickets</span><span class="metric-icon">◌</span></div><div class="metric-value">8</div><div class="metric-detail"><span class="up">3</span> need a response</div></article>
-        <article class="metric"><div class="metric-head"><span>Active subscriptions</span><span class="metric-icon">◈</span></div><div class="metric-value">37</div><div class="metric-detail"><span class="up">+2</span> this month</div></article>
-        <article class="metric"><div class="metric-head"><span>Monthly recurring revenue</span><span class="metric-icon">$</span></div><div class="metric-value">$4,860</div><div class="metric-detail"><span class="up">+8.2%</span> from May</div></article>
+        <article class="metric"><div class="metric-head"><span>New quote requests</span><span class="metric-icon">↗</span></div><div class="metric-value" id="newQuoteMetricValue">--</div><div class="metric-detail" id="newQuoteMetricDetail">Loading latest requests</div></article>
+        <article class="metric"><div class="metric-head"><span>Total quote requests</span><span class="metric-icon">∑</span></div><div class="metric-value" id="totalQuoteMetricValue">--</div><div class="metric-detail" id="totalQuoteMetricDetail">Loading total requests</div></article>
+        <article class="metric"><div class="metric-head"><span>Open tickets</span><span class="metric-icon">◌</span></div><div class="metric-value">0</div><div class="metric-detail">No tickets yet</div></article>
+        <article class="metric"><div class="metric-head"><span>Active subscriptions</span><span class="metric-icon">◈</span></div><div class="metric-value">0</div><div class="metric-detail">No subscriptions yet</div></article>
+        <article class="metric"><div class="metric-head"><span>Monthly recurring revenue</span><span class="metric-icon">$</span></div><div class="metric-value">$0</div><div class="metric-detail">No active subscriptions</div></article>
       </section>
 
       <section class="panels" aria-label="Recent activity">
         <article class="panel" id="requests">
           <header class="panel-head"><div><h2 class="panel-title">Recent quote requests</h2><p class="panel-subtitle">Latest website enquiries</p></div><button class="view-all" type="button">View all requests</button></header>
-          <div class="table-scroll"><table data-searchable><thead><tr><th>Name</th><th>Business</th><th>Package interest</th><th>Care plan interest</th><th>Status</th><th>Date</th></tr></thead><tbody>
-            <tr><td class="entity">Maya Rodriguez</td><td>Northline Studio</td><td>Growth site</td><td>Ongoing Care</td><td><span class="status new">New</span></td><td class="muted">Jun 25, 2026</td></tr>
-            <tr><td class="entity">Daniel Kim</td><td>Harbor &amp; Field</td><td>Starter site</td><td>Not sure yet</td><td><span class="status progress">In progress</span></td><td class="muted">Jun 24, 2026</td></tr>
-            <tr><td class="entity">Aisha Patel</td><td>Form &amp; Function</td><td>Custom project</td><td>Priority Care</td><td><span class="status won">Won</span></td><td class="muted">Jun 22, 2026</td></tr>
-            <tr><td class="entity">James Walker</td><td>Walker Advisory</td><td>Growth site</td><td>Standard Care</td><td><span class="status new">New</span></td><td class="muted">Jun 21, 2026</td></tr>
+          <div class="table-scroll"><table data-searchable><thead><tr><th>Name</th><th>Business</th><th>Package</th><th>Care Plan</th><th>Status</th><th>Date</th></tr></thead><tbody>
+            <tr class="table-state"><td colspan="6">Loading quote requests...</td></tr>
           </tbody></table></div><p class="empty">No matching quote requests.</p>
         </article>
 
         <article class="panel" id="tickets">
           <header class="panel-head"><div><h2 class="panel-title">Tickets</h2><p class="panel-subtitle">Support work in the queue</p></div><button class="view-all" type="button">View all tickets</button></header>
           <div class="table-scroll"><table data-searchable><thead><tr><th>Ticket title</th><th>Customer</th><th>Priority</th><th>Status</th><th>Last updated</th></tr></thead><tbody>
-            <tr><td class="entity">Add new team member</td><td>Northline Studio</td><td><span class="priority low">Low</span></td><td><span class="status open">Open</span></td><td class="muted">2 hours ago</td></tr>
-            <tr><td class="entity">Contact form notification issue</td><td>Harbor &amp; Field</td><td><span class="priority high">High</span></td><td><span class="status progress">In progress</span></td><td class="muted">4 hours ago</td></tr>
-            <tr><td class="entity">June content refresh</td><td>Form &amp; Function</td><td><span class="priority medium">Medium</span></td><td><span class="status open">Open</span></td><td class="muted">Yesterday</td></tr>
-            <tr><td class="entity">Update service pricing</td><td>Walker Advisory</td><td><span class="priority low">Low</span></td><td><span class="status closed">Closed</span></td><td class="muted">Jun 20, 2026</td></tr>
-          </tbody></table></div><p class="empty">No matching tickets.</p>
+          </tbody></table></div><p class="empty visible">No tickets yet.</p>
+        </article>
+
+        <article class="panel" id="customers">
+          <header class="panel-head"><div><h2 class="panel-title">Customers</h2><p class="panel-subtitle">Customer records</p></div><button class="view-all" type="button">View all customers</button></header>
+          <div class="table-scroll"><table data-searchable><thead><tr><th>Customer</th><th>Business</th><th>Email</th><th>Status</th><th>Created</th></tr></thead><tbody>
+          </tbody></table></div><p class="empty visible">No customers yet.</p>
         </article>
 
         <article class="panel" id="subscriptions">
           <header class="panel-head"><div><h2 class="panel-title">Subscriptions</h2><p class="panel-subtitle">Current care-plan billing</p></div><button class="view-all" type="button">View all subscriptions</button></header>
           <div class="table-scroll"><table data-searchable><thead><tr><th>Customer</th><th>Plan</th><th>Amount</th><th>Status</th><th>Renewal date</th></tr></thead><tbody>
-            <tr><td class="entity">Northline Studio</td><td>Priority Care</td><td>$289/mo</td><td><span class="status active">Active</span></td><td class="muted">Jul 01, 2026</td></tr>
-            <tr><td class="entity">Harbor &amp; Field</td><td>Standard Care</td><td>$149/mo</td><td><span class="status active">Active</span></td><td class="muted">Jul 05, 2026</td></tr>
-            <tr><td class="entity">Walker Advisory</td><td>Ongoing Care</td><td>$89/mo</td><td><span class="status past-due">Past due</span></td><td class="muted">Jun 20, 2026</td></tr>
-            <tr><td class="entity">Form &amp; Function</td><td>Priority Care</td><td>$289/mo</td><td><span class="status active">Active</span></td><td class="muted">Jul 12, 2026</td></tr>
-          </tbody></table></div><p class="empty">No matching subscriptions.</p>
+          </tbody></table></div><p class="empty visible">No subscriptions yet.</p>
         </article>
       </section>
     </main>
   </div>
 
-  <script>
+  <script type="module">
+    import { supabase, supabaseReady, supabaseConfigError } from "./supabase-client.js";
+
     const search = document.querySelector('#table-search');
     const tables = document.querySelectorAll('[data-searchable]');
+    const requestsPanel = document.querySelector('#requests');
+    const requestsTableBody = requestsPanel.querySelector('tbody');
+    const requestsEmpty = requestsPanel.querySelector('.empty');
+    const newQuoteMetricValue = document.querySelector('#newQuoteMetricValue');
+    const newQuoteMetricDetail = document.querySelector('#newQuoteMetricDetail');
+    const totalQuoteMetricValue = document.querySelector('#totalQuoteMetricValue');
+    const totalQuoteMetricDetail = document.querySelector('#totalQuoteMetricDetail');
+    const sessionEmail = document.querySelector('#sessionEmail');
+    const logoutButton = document.querySelector('#logoutButton');
 
     search.addEventListener('input', () => {
       const query = search.value.trim().toLowerCase();
@@ -205,6 +223,10 @@
       });
     });
 
+    function runTableSearch() {
+      search.dispatchEvent(new Event('input'));
+    }
+
     document.querySelectorAll('.nav-item').forEach((item) => {
       item.addEventListener('click', () => {
         document.querySelectorAll('.nav-item').forEach((nav) => nav.classList.remove('active'));
@@ -213,6 +235,151 @@
         if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
     });
+
+    function html(value) {
+      return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;',
+      }[char]));
+    }
+
+    function titleCase(value) {
+      return String(value || 'new')
+        .replace(/[-_]/g, ' ')
+        .replace(/\b\w/g, (letter) => letter.toUpperCase());
+    }
+
+    function statusClass(value) {
+      const normalized = String(value || 'new').toLowerCase().replace(/\s+/g, '-');
+      if (['won', 'active'].includes(normalized)) return 'won';
+      if (['in-progress', 'progress'].includes(normalized)) return 'progress';
+      if (['closed', 'lost'].includes(normalized)) return 'closed';
+      return 'new';
+    }
+
+    function formatDate(value) {
+      if (!value) return '&mdash;';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return '&mdash;';
+      return new Intl.DateTimeFormat('en', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      }).format(date);
+    }
+
+    function setRequestsState(message, isError = false) {
+      requestsTableBody.innerHTML = `<tr class="table-state${isError ? ' error' : ''}"><td colspan="6">${html(message)}</td></tr>`;
+      requestsEmpty.classList.remove('visible');
+    }
+
+    function renderRequests(rows, totalCount, newCount) {
+      newQuoteMetricValue.textContent = String(newCount);
+      newQuoteMetricDetail.innerHTML = `<span class="up">${newCount}</span> marked New`;
+      totalQuoteMetricValue.textContent = String(totalCount);
+      totalQuoteMetricDetail.innerHTML = `<span class="up">${totalCount}</span> total request${totalCount === 1 ? '' : 's'}`;
+
+      if (!rows.length) {
+        requestsTableBody.innerHTML = '';
+        requestsEmpty.textContent = 'No quote requests yet.';
+        requestsEmpty.classList.add('visible');
+        return;
+      }
+
+      requestsEmpty.textContent = 'No matching quote requests.';
+      requestsEmpty.classList.remove('visible');
+      requestsTableBody.innerHTML = rows.map((row) => {
+        const status = row.status || 'New';
+        return `
+          <tr>
+            <td class="entity">${html(row.name || 'Unnamed')}</td>
+            <td>${html(row.business_name || '—')}</td>
+            <td>${html(row.package_interest || 'Not sure yet')}</td>
+            <td>${html(row.care_plan_interest || 'Not sure yet')}</td>
+            <td><span class="status ${statusClass(status)}">${html(titleCase(status))}</span></td>
+            <td class="muted">${formatDate(row.created_at)}</td>
+          </tr>
+        `;
+      }).join('');
+
+      runTableSearch();
+    }
+
+    async function loadQuoteRequests() {
+      setRequestsState('Loading quote requests...');
+      newQuoteMetricValue.textContent = '--';
+      newQuoteMetricDetail.textContent = 'Loading latest requests';
+      totalQuoteMetricValue.textContent = '--';
+      totalQuoteMetricDetail.textContent = 'Loading total requests';
+
+      const [requestsResult, newCountResult] = await Promise.all([
+        supabase
+          .from('quote_requests')
+          .select('id, created_at, name, email, business_name, business_type, project_type, package_interest, care_plan_interest, features_needed, ideal_timeline, notes, status', { count: 'exact' })
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('quote_requests')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'New'),
+      ]);
+
+      const error = requestsResult.error || newCountResult.error;
+      if (error) {
+        console.error('Supabase quote_requests select failed:', error);
+        setRequestsState(error.message || 'Could not load quote requests.', true);
+        newQuoteMetricValue.textContent = '!';
+        newQuoteMetricDetail.textContent = 'Supabase query failed';
+        totalQuoteMetricValue.textContent = '!';
+        totalQuoteMetricDetail.textContent = 'Supabase query failed';
+        return;
+      }
+
+      renderRequests(requestsResult.data || [], requestsResult.count || 0, newCountResult.count || 0);
+    }
+
+    function redirectToLogin() {
+      const redirect = encodeURIComponent('admin.html');
+      window.location.replace(`login.html?redirect=${redirect}`);
+    }
+
+    async function initAdmin() {
+      if (!supabaseReady) {
+        setRequestsState(supabaseConfigError, true);
+        newQuoteMetricValue.textContent = '!';
+        newQuoteMetricDetail.textContent = 'Missing Supabase config';
+        totalQuoteMetricValue.textContent = '!';
+        totalQuoteMetricDetail.textContent = 'Missing Supabase config';
+        logoutButton.disabled = true;
+        return;
+      }
+
+      const { data, error } = await supabase.auth.getSession();
+      if (error || !data.session) {
+        redirectToLogin();
+        return;
+      }
+
+      sessionEmail.textContent = data.session.user.email || '';
+      await loadQuoteRequests();
+    }
+
+    logoutButton.addEventListener('click', async () => {
+      if (!supabaseReady) return;
+      logoutButton.disabled = true;
+      await supabase.auth.signOut();
+      redirectToLogin();
+    });
+
+    if (supabaseReady) {
+      supabase.auth.onAuthStateChange((event) => {
+        if (event === 'SIGNED_OUT') redirectToLogin();
+      });
+    }
+
+    initAdmin();
   </script>
 </body>
 </html>
