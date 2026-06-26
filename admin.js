@@ -16,6 +16,32 @@ export const quoteRequestColumns = [
   "status",
 ].join(", ");
 
+export const customerColumns = [
+  "id",
+  "created_at",
+  "updated_at",
+  "name",
+  "email",
+  "phone",
+  "business_name",
+  "business_type",
+  "status",
+  "lead_source",
+  "quote_request_id",
+  "project_type",
+  "package_interest",
+  "selected_package",
+  "package_price",
+  "care_plan_interest",
+  "selected_care_plan",
+  "care_plan_price",
+  "ideal_timeline",
+  "features_needed",
+  "notes",
+  "discount_adjustment",
+  "pricing_notes",
+].join(", ");
+
 export function html(value) {
   return String(value ?? "").replace(/[&<>"']/g, (char) => ({
     "&": "&amp;",
@@ -128,6 +154,202 @@ export async function getQuoteRequests({ limit } = {}) {
   }
 
   return data || [];
+}
+
+export async function getCustomerCount() {
+  const { count, error } = await supabase
+    .from("customers")
+    .select("id", { count: "exact", head: true });
+
+  if (error) {
+    console.error("Supabase customers count failed:", error);
+    throw error;
+  }
+
+  return count || 0;
+}
+
+export async function getCustomers() {
+  const { data, error } = await supabase
+    .from("customers")
+    .select(customerColumns)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Supabase customers select failed:", error);
+    throw error;
+  }
+
+  return data || [];
+}
+
+export async function getCustomer(id) {
+  const { data, error } = await supabase
+    .from("customers")
+    .select(customerColumns)
+    .eq("id", id)
+    .single();
+
+  if (error) {
+    console.error("Supabase customer select failed:", error);
+    throw error;
+  }
+
+  return data;
+}
+
+export async function createCustomer(payload) {
+  const { data, error } = await supabase
+    .from("customers")
+    .insert(payload)
+    .select("id")
+    .single();
+
+  if (error) {
+    console.error("Supabase customer insert failed:", error);
+    throw error;
+  }
+
+  return data;
+}
+
+export async function updateCustomer(id, payload) {
+  const { data, error } = await supabase
+    .from("customers")
+    .update({ ...payload, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .select(customerColumns)
+    .single();
+
+  if (error) {
+    console.error("Supabase customer update failed:", error);
+    throw error;
+  }
+
+  return data;
+}
+
+export async function createCustomerFromQuoteRequest(row) {
+  return createCustomer({
+    name: row.name || null,
+    email: row.email || null,
+    business_name: row.business_name || null,
+    business_type: row.business_type || null,
+    status: "Lead",
+    lead_source: "Quote request",
+    quote_request_id: row.id || null,
+    project_type: row.project_type || null,
+    package_interest: row.package_interest || null,
+    care_plan_interest: row.care_plan_interest || null,
+    ideal_timeline: row.ideal_timeline || null,
+    features_needed: row.features_needed || null,
+    notes: row.notes || null,
+  });
+}
+
+export async function getCustomerNotes(customerId) {
+  const { data, error } = await supabase
+    .from("customer_notes")
+    .select("id, customer_id, created_at, created_by, note")
+    .eq("customer_id", customerId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Supabase customer_notes select failed:", error);
+    throw error;
+  }
+
+  return data || [];
+}
+
+export async function addCustomerNote(customerId, note, createdBy) {
+  const { data, error } = await supabase
+    .from("customer_notes")
+    .insert({ customer_id: customerId, note, created_by: createdBy || null })
+    .select("id, customer_id, created_at, created_by, note")
+    .single();
+
+  if (error) {
+    console.error("Supabase customer_notes insert failed:", error);
+    throw error;
+  }
+
+  return data;
+}
+
+export async function getCustomerFiles(customerId) {
+  const { data, error } = await supabase
+    .from("customer_files")
+    .select("id, customer_id, created_at, file_name, file_path, file_type, uploaded_by")
+    .eq("customer_id", customerId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Supabase customer_files select failed:", error);
+    throw error;
+  }
+
+  return data || [];
+}
+
+export async function uploadCustomerFile(customerId, file, uploadedBy) {
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-");
+  const filePath = `${customerId}/${Date.now()}-${safeName}`;
+  const upload = await supabase.storage.from("customer-files").upload(filePath, file);
+
+  if (upload.error) {
+    console.error("Supabase customer file upload failed:", upload.error);
+    throw upload.error;
+  }
+
+  const { data, error } = await supabase
+    .from("customer_files")
+    .insert({
+      customer_id: customerId,
+      file_name: file.name,
+      file_path: filePath,
+      file_type: file.type || null,
+      uploaded_by: uploadedBy || null,
+    })
+    .select("id, customer_id, created_at, file_name, file_path, file_type, uploaded_by")
+    .single();
+
+  if (error) {
+    console.error("Supabase customer_files insert failed:", error);
+    throw error;
+  }
+
+  return data;
+}
+
+export async function getCustomerInvoices(customerId) {
+  const { data, error } = await supabase
+    .from("customer_invoices")
+    .select("id, customer_id, created_at, title, description, amount, status, due_date, stripe_invoice_id, stripe_invoice_url")
+    .eq("customer_id", customerId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Supabase customer_invoices select failed:", error);
+    throw error;
+  }
+
+  return data || [];
+}
+
+export async function createCustomerInvoice(payload) {
+  const { data, error } = await supabase
+    .from("customer_invoices")
+    .insert(payload)
+    .select("id, customer_id, created_at, title, description, amount, status, due_date, stripe_invoice_id, stripe_invoice_url")
+    .single();
+
+  if (error) {
+    console.error("Supabase customer_invoices insert failed:", error);
+    throw error;
+  }
+
+  return data;
 }
 
 export function quoteRequestRow(row, includeEmail = false) {

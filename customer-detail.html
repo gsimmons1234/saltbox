@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <title>Customer - Saltbox Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" aria-label="Admin navigation">
+      <a class="brand" href="index.html" aria-label="Saltbox home"><span class="mark" aria-hidden="true"></span>Saltbox</a>
+      <p class="preview-label">Admin</p>
+      <nav aria-label="Admin pages">
+        <ul class="nav-list">
+          <li><a class="nav-item" data-page="dashboard" href="admin.html">Dashboard</a></li>
+          <li><a class="nav-item" data-page="requests" href="requests.html">Requests</a></li>
+          <li><a class="nav-item" data-page="tickets" href="tickets.html">Tickets</a></li>
+          <li><a class="nav-item" data-page="customers" href="customers.html">Customers</a></li>
+          <li><a class="nav-item" data-page="subscriptions" href="subscriptions.html">Subscriptions</a></li>
+          <li><a class="nav-item" data-page="settings" href="settings.html">Settings</a></li>
+        </ul>
+      </nav>
+      <div class="sidebar-footer"><a class="back-link" href="index.html">Back to site</a></div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div><div class="page-kicker">Customer</div><h1 id="pageTitle">Customer profile</h1><p class="page-subtitle" id="pageSubtitle">Loading customer account.</p></div>
+        <div class="top-actions">
+          <a class="button-link" href="customers.html">Back to customers</a>
+          <span class="session-email" data-session-email></span>
+          <button class="logout-btn" data-logout type="button">Log out</button>
+        </div>
+      </header>
+
+      <div class="detail-grid">
+        <article class="panel">
+          <header class="panel-head"><div><h2 class="panel-title">Customer overview</h2><p class="panel-subtitle">Contact and account status</p></div></header>
+          <form class="panel-body" id="overviewForm">
+            <div class="form-grid">
+              <div class="field"><label for="name">Customer name</label><input id="name" name="name" type="text" required></div>
+              <div class="field"><label for="email">Email</label><input id="email" name="email" type="email"></div>
+              <div class="field"><label for="phone">Phone</label><input id="phone" name="phone" type="tel"></div>
+              <div class="field"><label for="business_name">Business name</label><input id="business_name" name="business_name" type="text"></div>
+              <div class="field"><label for="business_type">Business type</label><input id="business_type" name="business_type" type="text"></div>
+              <div class="field"><label for="status">Customer status</label><select id="status" name="status"><option>Lead</option><option>Active</option><option>Past customer</option><option>Archived</option></select></div>
+              <div class="field"><label for="lead_source">Lead source</label><input id="lead_source" name="lead_source" type="text"></div>
+              <div class="field"><label>Created date</label><input id="created_at" type="text" disabled></div>
+            </div>
+            <div class="button-row" style="margin-top:16px;"><button class="button-link primary" type="submit">Save overview</button></div>
+            <p class="form-status" id="overviewStatus" role="status" aria-live="polite"></p>
+          </form>
+        </article>
+
+        <article class="panel">
+          <header class="panel-head"><div><h2 class="panel-title">Project details</h2><p class="panel-subtitle">Scope, package, and timeline</p></div></header>
+          <form class="panel-body" id="projectForm">
+            <div class="form-grid">
+              <div class="field"><label for="project_type">Project type</label><input id="project_type" name="project_type" type="text"></div>
+              <div class="field"><label for="package_interest">Package interest</label><input id="package_interest" name="package_interest" type="text"></div>
+              <div class="field"><label for="selected_package">Selected package</label><input id="selected_package" name="selected_package" type="text"></div>
+              <div class="field"><label for="package_price_project">Package price</label><input id="package_price_project" name="package_price" type="number" min="0" step="0.01"></div>
+              <div class="field"><label for="care_plan_interest">Care plan interest</label><input id="care_plan_interest" name="care_plan_interest" type="text"></div>
+              <div class="field"><label for="selected_care_plan">Selected care plan</label><input id="selected_care_plan" name="selected_care_plan" type="text"></div>
+              <div class="field"><label for="care_plan_price_project">Care plan monthly price</label><input id="care_plan_price_project" name="care_plan_price" type="number" min="0" step="0.01"></div>
+              <div class="field"><label for="ideal_timeline">Timeline</label><input id="ideal_timeline" name="ideal_timeline" type="text"></div>
+              <div class="field full"><label for="features_needed">Features needed</label><textarea id="features_needed" name="features_needed"></textarea></div>
+              <div class="field full"><label for="notes">Project notes</label><textarea id="notes" name="notes"></textarea></div>
+            </div>
+            <div class="button-row" style="margin-top:16px;"><button class="button-link primary" type="submit">Save project</button></div>
+            <p class="form-status" id="projectStatus" role="status" aria-live="polite"></p>
+          </form>
+        </article>
+
+        <article class="panel wide">
+          <header class="panel-head"><div><h2 class="panel-title">Editable pricing</h2><p class="panel-subtitle">Internal pricing adjustments</p></div></header>
+          <form class="panel-body" id="pricingForm">
+            <div class="form-grid">
+              <div class="field"><label for="package_price">Package price</label><input id="package_price" name="package_price" type="number" min="0" step="0.01"></div>
+              <div class="field"><label for="care_plan_price">Monthly care price</label><input id="care_plan_price" name="care_plan_price" type="number" min="0" step="0.01"></div>
+              <div class="field"><label for="discount_adjustment">Discount/adjustment</label><input id="discount_adjustment" name="discount_adjustment" type="number" step="0.01"></div>
+              <div class="field full"><label for="pricing_notes">Internal pricing notes</label><textarea id="pricing_notes" name="pricing_notes"></textarea></div>
+            </div>
+            <div class="button-row" style="margin-top:16px;"><button class="button-link primary" type="submit">Save pricing</button></div>
+            <p class="form-status" id="pricingStatus" role="status" aria-live="polite"></p>
+          </form>
+        </article>
+
+        <article class="panel">
+          <header class="panel-head"><div><h2 class="panel-title">Notes</h2><p class="panel-subtitle">Internal phone-call and project notes</p></div></header>
+          <div class="panel-body">
+            <form id="noteForm">
+              <div class="field"><label for="noteText">Add note</label><textarea id="noteText" name="note" required></textarea></div>
+              <div class="button-row" style="margin-top:12px;"><button class="button-link primary" type="submit">Save note</button></div>
+              <p class="form-status" id="noteStatus" role="status" aria-live="polite"></p>
+            </form>
+            <div class="note-list" id="notesList" style="margin-top:18px;"></div>
+          </div>
+        </article>
+
+        <article class="panel">
+          <header class="panel-head"><div><h2 class="panel-title">Files</h2><p class="panel-subtitle">Customer file metadata and uploads</p></div></header>
+          <div class="panel-body">
+            <p class="page-subtitle">File uploads require Supabase Storage setup. Use a private bucket named <strong>customer-files</strong>.</p>
+            <form id="fileForm" style="margin-top:16px;">
+              <div class="field"><label for="customerFile">Upload file</label><input id="customerFile" name="file" type="file"></div>
+              <div class="button-row" style="margin-top:12px;"><button class="button-link primary" type="submit">Upload file</button></div>
+              <p class="form-status" id="fileStatus" role="status" aria-live="polite"></p>
+            </form>
+            <div id="filesList" style="margin-top:18px;"></div>
+          </div>
+        </article>
+
+        <article class="panel wide">
+          <header class="panel-head"><div><h2 class="panel-title">Invoices</h2><p class="panel-subtitle">Draft invoice records</p></div></header>
+          <div class="panel-body">
+            <p class="page-subtitle">Stripe invoice creation will be connected through a Netlify Function in the next phase.</p>
+            <form id="invoiceForm" style="margin-top:16px;">
+              <div class="form-grid">
+                <div class="field"><label for="invoiceTitle">Invoice title</label><input id="invoiceTitle" name="title" type="text" required></div>
+                <div class="field"><label for="invoiceAmount">Amount</label><input id="invoiceAmount" name="amount" type="number" min="0" step="0.01" required></div>
+                <div class="field"><label for="invoiceDueDate">Due date</label><input id="invoiceDueDate" name="due_date" type="date"></div>
+                <div class="field full"><label for="invoiceDescription">Description</label><textarea id="invoiceDescription" name="description"></textarea></div>
+              </div>
+              <div class="button-row" style="margin-top:16px;"><button class="button-link primary" type="submit">Create invoice</button></div>
+              <p class="form-status" id="invoiceStatus" role="status" aria-live="polite"></p>
+            </form>
+            <div id="invoicesList" style="margin-top:18px;"></div>
+          </div>
+        </article>
+      </div>
+    </main>
+  </div>
+
+  <script type="module">
+    import {
+      addCustomerNote,
+      createCustomerInvoice,
+      formatDate,
+      getCustomer,
+      getCustomerFiles,
+      getCustomerInvoices,
+      getCustomerNotes,
+      html,
+      initAdminPage,
+      updateCustomer,
+      uploadCustomerFile
+    } from "./admin.js";
+
+    const admin = await initAdminPage("customers");
+    const params = new URLSearchParams(window.location.search);
+    const customerId = params.get("id");
+    let customer = null;
+
+    function setStatus(id, message, state = "") {
+      const node = document.getElementById(id);
+      node.textContent = message;
+      node.className = `form-status ${state}`.trim();
+    }
+
+    function moneyValue(value) {
+      return value === null || value === undefined ? "" : String(value);
+    }
+
+    function fillCustomer(row) {
+      customer = row;
+      document.getElementById("pageTitle").textContent = row.name || "Unnamed customer";
+      document.getElementById("pageSubtitle").textContent = row.business_name || row.email || "Customer account";
+
+      ["name", "email", "phone", "business_name", "business_type", "status", "lead_source", "project_type", "package_interest", "selected_package", "care_plan_interest", "selected_care_plan", "ideal_timeline", "features_needed", "notes", "pricing_notes"].forEach((field) => {
+        const input = document.getElementById(field);
+        if (input) input.value = row[field] || "";
+      });
+
+      document.getElementById("created_at").value = formatDate(row.created_at).replace("&mdash;", "-");
+      document.getElementById("package_price_project").value = moneyValue(row.package_price);
+      document.getElementById("care_plan_price_project").value = moneyValue(row.care_plan_price);
+      document.getElementById("package_price").value = moneyValue(row.package_price);
+      document.getElementById("care_plan_price").value = moneyValue(row.care_plan_price);
+      document.getElementById("discount_adjustment").value = moneyValue(row.discount_adjustment);
+    }
+
+    function numberOrNull(value) {
+      return value === "" ? null : Number(value);
+    }
+
+    function renderNotes(rows) {
+      const list = document.getElementById("notesList");
+      if (!rows.length) {
+        list.innerHTML = '<p class="empty visible">No notes yet.</p>';
+        return;
+      }
+      list.innerHTML = rows.map((row) => `
+        <article class="note-item">
+          <div class="note-meta">${formatDate(row.created_at)}${row.created_by ? ` · ${html(row.created_by)}` : ""}</div>
+          <p>${html(row.note || "")}</p>
+        </article>
+      `).join("");
+    }
+
+    function renderFiles(rows) {
+      const list = document.getElementById("filesList");
+      if (!rows.length) {
+        list.innerHTML = '<p class="empty visible">No files yet.</p>';
+        return;
+      }
+      list.innerHTML = rows.map((row) => `
+        <div class="file-row"><span>${html(row.file_name || "Untitled file")}</span><span class="muted">${formatDate(row.created_at)}</span></div>
+      `).join("");
+    }
+
+    function renderInvoices(rows) {
+      const list = document.getElementById("invoicesList");
+      if (!rows.length) {
+        list.innerHTML = '<p class="empty visible">No invoices yet.</p>';
+        return;
+      }
+      list.innerHTML = rows.map((row) => `
+        <div class="invoice-row"><div><strong>${html(row.title || "Untitled invoice")}</strong><div class="muted">${html(row.status || "Draft")} · Due ${row.due_date ? html(row.due_date) : "-"}</div></div><span>$${Number(row.amount || 0).toFixed(2)}</span></div>
+      `).join("");
+    }
+
+    async function refreshRelated() {
+      const [notes, files, invoices] = await Promise.all([
+        getCustomerNotes(customerId).catch((error) => {
+          document.getElementById("notesList").innerHTML = `<p class="empty visible">${html(error.message || "Could not load notes.")}</p>`;
+          return [];
+        }),
+        getCustomerFiles(customerId).catch((error) => {
+          document.getElementById("filesList").innerHTML = `<p class="empty visible">${html(error.message || "Could not load files.")}</p>`;
+          return [];
+        }),
+        getCustomerInvoices(customerId).catch((error) => {
+          document.getElementById("invoicesList").innerHTML = `<p class="empty visible">${html(error.message || "Could not load invoices.")}</p>`;
+          return [];
+        }),
+      ]);
+      renderNotes(notes);
+      renderFiles(files);
+      renderInvoices(invoices);
+    }
+
+    async function saveCustomer(payload, statusId) {
+      setStatus(statusId, "Saving...");
+      try {
+        fillCustomer(await updateCustomer(customerId, payload));
+        setStatus(statusId, "Saved.", "success");
+      } catch (error) {
+        setStatus(statusId, error.message || "Could not save.", "error");
+      }
+    }
+
+    if (!admin.redirecting && !customerId) {
+      document.getElementById("pageSubtitle").textContent = "Missing customer id.";
+    } else if (!admin.redirecting && admin.configError) {
+      document.getElementById("pageSubtitle").textContent = admin.configError;
+    } else if (!admin.redirecting) {
+      try {
+        fillCustomer(await getCustomer(customerId));
+        await refreshRelated();
+      } catch (error) {
+        document.getElementById("pageSubtitle").textContent = error.message || "Could not load customer.";
+      }
+    }
+
+    document.getElementById("overviewForm").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const fields = event.currentTarget.elements;
+      saveCustomer({
+        name: fields.name.value.trim(),
+        email: fields.email.value.trim() || null,
+        phone: fields.phone.value.trim() || null,
+        business_name: fields.business_name.value.trim() || null,
+        business_type: fields.business_type.value.trim() || null,
+        status: fields.status.value,
+        lead_source: fields.lead_source.value.trim() || null,
+      }, "overviewStatus");
+    });
+
+    document.getElementById("projectForm").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const fields = event.currentTarget.elements;
+      saveCustomer({
+        project_type: fields.project_type.value.trim() || null,
+        package_interest: fields.package_interest.value.trim() || null,
+        selected_package: fields.selected_package.value.trim() || null,
+        package_price: numberOrNull(fields.package_price.value),
+        care_plan_interest: fields.care_plan_interest.value.trim() || null,
+        selected_care_plan: fields.selected_care_plan.value.trim() || null,
+        care_plan_price: numberOrNull(fields.care_plan_price.value),
+        ideal_timeline: fields.ideal_timeline.value.trim() || null,
+        features_needed: fields.features_needed.value.trim() || null,
+        notes: fields.notes.value.trim() || null,
+      }, "projectStatus");
+    });
+
+    document.getElementById("pricingForm").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const fields = event.currentTarget.elements;
+      saveCustomer({
+        package_price: numberOrNull(fields.package_price.value),
+        care_plan_price: numberOrNull(fields.care_plan_price.value),
+        discount_adjustment: numberOrNull(fields.discount_adjustment.value),
+        pricing_notes: fields.pricing_notes.value.trim() || null,
+      }, "pricingStatus");
+    });
+
+    document.getElementById("noteForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const note = event.currentTarget.elements.note.value.trim();
+      if (!note) return;
+      setStatus("noteStatus", "Saving note...");
+      try {
+        await addCustomerNote(customerId, note, admin.session?.user?.email);
+        event.currentTarget.reset();
+        renderNotes(await getCustomerNotes(customerId));
+        setStatus("noteStatus", "Note saved.", "success");
+      } catch (error) {
+        setStatus("noteStatus", error.message || "Could not save note.", "error");
+      }
+    });
+
+    document.getElementById("fileForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const file = event.currentTarget.elements.file.files[0];
+      if (!file) return;
+      setStatus("fileStatus", "Uploading file...");
+      try {
+        await uploadCustomerFile(customerId, file, admin.session?.user?.email);
+        event.currentTarget.reset();
+        renderFiles(await getCustomerFiles(customerId));
+        setStatus("fileStatus", "File uploaded.", "success");
+      } catch (error) {
+        setStatus("fileStatus", error.message || "File uploads require Supabase Storage setup.", "error");
+      }
+    });
+
+    document.getElementById("invoiceForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const fields = event.currentTarget.elements;
+      setStatus("invoiceStatus", "Creating invoice...");
+      try {
+        await createCustomerInvoice({
+          customer_id: customerId,
+          title: fields.title.value.trim(),
+          description: fields.description.value.trim() || null,
+          amount: numberOrNull(fields.amount.value),
+          due_date: fields.due_date.value || null,
+          status: "Draft",
+        });
+        event.currentTarget.reset();
+        renderInvoices(await getCustomerInvoices(customerId));
+        setStatus("invoiceStatus", "Draft invoice created.", "success");
+      } catch (error) {
+        setStatus("invoiceStatus", error.message || "Could not create invoice.", "error");
+      }
+    });
+  </script>
+</body>
+</html>

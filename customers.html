@@ -30,7 +30,7 @@
 
     <main class="main">
       <header class="topbar">
-        <div><div class="page-kicker">Customers</div><h1>Customers</h1><p class="page-subtitle">Basic contacts derived from real quote requests.</p></div>
+        <div><div class="page-kicker">Customers</div><h1>Customers</h1><p class="page-subtitle">Real customer accounts from Supabase.</p></div>
         <div class="top-actions">
           <label class="search"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="customerSearch" type="search" placeholder="Search customers" aria-label="Search customers"></label>
           <span class="session-email" data-session-email></span>
@@ -39,11 +39,24 @@
       </header>
 
       <article class="panel">
-        <header class="panel-head"><div><h2 class="panel-title">Customer contacts</h2><p class="panel-subtitle" id="customerCount">Loading from quote requests</p></div></header>
+        <header class="panel-head">
+          <div><h2 class="panel-title">Customer accounts</h2><p class="panel-subtitle" id="customerCount">Loading from Supabase</p></div>
+          <button class="button-link primary" id="createCustomerToggle" type="button">Create customer</button>
+        </header>
+        <form class="form-panel" id="createCustomerForm" hidden>
+          <div class="form-grid">
+            <div class="field"><label for="newName">Customer name</label><input id="newName" name="name" type="text" autocomplete="name" required></div>
+            <div class="field"><label for="newEmail">Email</label><input id="newEmail" name="email" type="email" autocomplete="email"></div>
+            <div class="field"><label for="newBusiness">Business name</label><input id="newBusiness" name="business_name" type="text"></div>
+            <div class="field"><label for="newStatus">Status</label><select id="newStatus" name="status"><option>Lead</option><option>Active</option><option>Past customer</option><option>Archived</option></select></div>
+          </div>
+          <div class="button-row" style="margin-top:16px;"><button class="button-link primary" type="submit">Save customer</button><button class="button-link" id="cancelCreateCustomer" type="button">Cancel</button></div>
+          <p class="form-status" id="createCustomerStatus" role="status" aria-live="polite"></p>
+        </form>
         <div class="table-scroll">
           <table>
-            <thead><tr><th>Name</th><th>Email</th><th>Business</th><th>Latest request</th></tr></thead>
-            <tbody id="customersBody"><tr class="table-state"><td colspan="4">Loading customers...</td></tr></tbody>
+            <thead><tr><th>Name</th><th>Email</th><th>Business</th><th>Status</th><th>Created</th><th></th></tr></thead>
+            <tbody id="customersBody"><tr class="table-state"><td colspan="6">Loading customers...</td></tr></tbody>
           </table>
         </div>
         <p class="empty" id="customersEmpty">No customers yet.</p>
@@ -52,49 +65,88 @@
   </div>
 
   <script type="module">
-    import { bindTableSearch, formatDate, getQuoteRequests, html, initAdminPage, setTableState } from "./admin.js";
+    import { bindTableSearch, createCustomer, formatDate, getCustomers, html, initAdminPage, setTableState } from "./admin.js";
 
     const admin = await initAdminPage("customers");
     const body = document.getElementById("customersBody");
     const empty = document.getElementById("customersEmpty");
     const count = document.getElementById("customerCount");
+    const form = document.getElementById("createCustomerForm");
+    const status = document.getElementById("createCustomerStatus");
 
     bindTableSearch(document.getElementById("customerSearch"), body, empty, "No customers yet.");
 
-    function deriveCustomers(rows) {
-      const customers = new Map();
-      rows.forEach((row) => {
-        const key = row.email || `${row.name}|${row.business_name}`;
-        if (!key || customers.has(key)) return;
-        customers.set(key, row);
-      });
-      return [...customers.values()];
+    document.getElementById("createCustomerToggle").addEventListener("click", () => {
+      form.hidden = false;
+      document.getElementById("newName").focus();
+    });
+
+    document.getElementById("cancelCreateCustomer").addEventListener("click", () => {
+      form.hidden = true;
+      status.textContent = "";
+      form.reset();
+    });
+
+    function renderCustomers(rows) {
+      count.textContent = `${rows.length} customer${rows.length === 1 ? "" : "s"}`;
+
+      if (!rows.length) {
+        body.innerHTML = "";
+        empty.classList.add("visible");
+        return;
+      }
+
+      empty.classList.remove("visible");
+      body.innerHTML = rows.map((row) => {
+        const href = `customer-detail.html?id=${encodeURIComponent(row.id)}`;
+        return `
+          <tr data-href="${href}" data-search-text="${html([row.name, row.email, row.business_name, row.status].join(" ").toLowerCase())}">
+            <td class="entity"><a class="row-link" href="${href}">${html(row.name || "Unnamed")}</a></td>
+            <td>${html(row.email || "-")}</td>
+            <td>${html(row.business_name || "-")}</td>
+            <td><span class="status ${row.status === "Active" ? "active" : "new"}">${html(row.status || "Lead")}</span></td>
+            <td class="muted">${formatDate(row.created_at)}</td>
+            <td><a class="row-link" href="${href}">Open</a></td>
+          </tr>
+        `;
+      }).join("");
     }
 
+    body.addEventListener("click", (event) => {
+      if (event.target.closest("a")) return;
+      const row = event.target.closest("tr[data-href]");
+      if (row) window.location.href = row.dataset.href;
+    });
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      status.textContent = "Creating customer...";
+      status.className = "form-status";
+
+      try {
+        const fields = form.elements;
+        const customer = await createCustomer({
+          name: fields.name.value.trim(),
+          email: fields.email.value.trim() || null,
+          business_name: fields.business_name.value.trim() || null,
+          status: fields.status.value,
+          lead_source: "Manual",
+        });
+        window.location.href = `customer-detail.html?id=${encodeURIComponent(customer.id)}`;
+      } catch (error) {
+        status.textContent = error.message || "Could not create customer.";
+        status.className = "form-status error";
+      }
+    });
+
     if (!admin.redirecting && admin.configError) {
-      setTableState(body, admin.configError, true, 4);
+      setTableState(body, admin.configError, true, 6);
       count.textContent = "Unavailable";
     } else if (!admin.redirecting) {
       try {
-        const customers = deriveCustomers(await getQuoteRequests());
-        count.textContent = `${customers.length} derived contact${customers.length === 1 ? "" : "s"}`;
-
-        if (!customers.length) {
-          body.innerHTML = "";
-          empty.classList.add("visible");
-        } else {
-          empty.classList.remove("visible");
-          body.innerHTML = customers.map((row) => `
-            <tr data-search-text="${html([row.name, row.email, row.business_name].join(" ").toLowerCase())}">
-              <td class="entity">${html(row.name || "Unnamed")}</td>
-              <td>${html(row.email || "-")}</td>
-              <td>${html(row.business_name || "-")}</td>
-              <td class="muted">${formatDate(row.created_at)}</td>
-            </tr>
-          `).join("");
-        }
+        renderCustomers(await getCustomers());
       } catch (error) {
-        setTableState(body, error.message || "Could not load customers.", true, 4);
+        setTableState(body, error.message || "Could not load customers.", true, 6);
         count.textContent = "Supabase query failed";
       }
     }

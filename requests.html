@@ -42,8 +42,8 @@
         <header class="panel-head"><div><h2 class="panel-title">All quote requests</h2><p class="panel-subtitle" id="requestCount">Loading from Supabase</p></div></header>
         <div class="table-scroll">
           <table>
-            <thead><tr><th>Name</th><th>Business</th><th>Email</th><th>Project Type</th><th>Package</th><th>Care Plan</th><th>Status</th><th>Date</th></tr></thead>
-            <tbody id="requestsBody"><tr class="table-state"><td colspan="8">Loading quote requests...</td></tr></tbody>
+            <thead><tr><th>Name</th><th>Business</th><th>Email</th><th>Project Type</th><th>Package</th><th>Care Plan</th><th>Status</th><th>Date</th><th></th></tr></thead>
+            <tbody id="requestsBody"><tr class="table-state"><td colspan="9">Loading quote requests...</td></tr></tbody>
           </table>
         </div>
         <p class="empty" id="requestsEmpty">No quote requests yet.</p>
@@ -52,7 +52,7 @@
   </div>
 
   <script type="module">
-    import { bindTableSearch, getQuoteRequests, initAdminPage, quoteRequestRow, setTableState } from "./admin.js";
+    import { bindTableSearch, createCustomerFromQuoteRequest, formatDate, getQuoteRequests, html, initAdminPage, setTableState, statusClass, titleCase } from "./admin.js";
 
     const admin = await initAdminPage("requests");
     const body = document.getElementById("requestsBody");
@@ -62,7 +62,7 @@
     bindTableSearch(document.getElementById("requestSearch"), body, empty, "No quote requests yet.");
 
     if (!admin.redirecting && admin.configError) {
-      setTableState(body, admin.configError, true, 8);
+      setTableState(body, admin.configError, true, 9);
       count.textContent = "Unavailable";
     } else if (!admin.redirecting) {
       try {
@@ -74,10 +74,43 @@
           empty.classList.add("visible");
         } else {
           empty.classList.remove("visible");
-          body.innerHTML = rows.map((row) => quoteRequestRow(row, true)).join("");
+          body.innerHTML = rows.map((row) => {
+            const status = row.status || "New";
+            return `
+              <tr data-search-text="${html([row.name, row.email, row.business_name, row.project_type, row.package_interest, row.care_plan_interest, row.status].join(" ").toLowerCase())}">
+                <td class="entity">${html(row.name || "Unnamed")}</td>
+                <td>${html(row.business_name || "-")}</td>
+                <td>${html(row.email || "-")}</td>
+                <td>${html(row.project_type || "-")}</td>
+                <td>${html(row.package_interest || "Not sure yet")}</td>
+                <td>${html(row.care_plan_interest || "Not sure yet")}</td>
+                <td><span class="status ${statusClass(status)}">${html(titleCase(status))}</span></td>
+                <td class="muted">${formatDate(row.created_at)}</td>
+                <td><button class="button-link" type="button" data-create-customer="${html(row.id)}">Create customer</button></td>
+              </tr>
+            `;
+          }).join("");
+
+          body.addEventListener("click", async (event) => {
+            const button = event.target.closest("[data-create-customer]");
+            if (!button) return;
+            const request = rows.find((row) => row.id === button.dataset.createCustomer);
+            if (!request) return;
+
+            button.disabled = true;
+            button.textContent = "Creating...";
+
+            try {
+              const customer = await createCustomerFromQuoteRequest(request);
+              window.location.href = `customer-detail.html?id=${encodeURIComponent(customer.id)}`;
+            } catch (error) {
+              button.disabled = false;
+              button.textContent = error.message || "Could not create";
+            }
+          });
         }
       } catch (error) {
-        setTableState(body, error.message || "Could not load quote requests.", true, 8);
+        setTableState(body, error.message || "Could not load quote requests.", true, 9);
         count.textContent = "Supabase query failed";
       }
     }
