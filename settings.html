@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <title>Settings - Saltbox Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" aria-label="Admin navigation">
+      <a class="brand" href="index.html" aria-label="Saltbox home"><span class="mark" aria-hidden="true"></span>Saltbox</a>
+      <p class="preview-label">Admin</p>
+      <nav aria-label="Admin pages">
+        <ul class="nav-list">
+          <li><a class="nav-item" data-page="dashboard" href="admin.html">Dashboard</a></li>
+          <li><a class="nav-item" data-page="requests" href="requests.html">Requests</a></li>
+          <li><a class="nav-item" data-page="tickets" href="tickets.html">Tickets</a></li>
+          <li><a class="nav-item" data-page="customers" href="customers.html">Customers</a></li>
+          <li><a class="nav-item" data-page="subscriptions" href="subscriptions.html">Subscriptions</a></li>
+          <li><a class="nav-item" data-page="settings" href="settings.html">Settings</a></li>
+        </ul>
+      </nav>
+      <div class="sidebar-footer"><a class="back-link" href="index.html">Back to site</a></div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div><div class="page-kicker">Settings</div><h1>Settings</h1><p class="page-subtitle">Admin account and connection status.</p></div>
+        <div class="top-actions">
+          <span class="session-email" data-session-email></span>
+          <button class="logout-btn" data-logout type="button">Log out</button>
+        </div>
+      </header>
+
+      <div class="settings-grid">
+        <article class="settings-card">
+          <h2>Admin account</h2>
+          <div class="settings-row"><span>Email</span><strong id="accountEmail">Loading</strong></div>
+          <div class="settings-row"><span>Auth provider</span><strong>Supabase Auth</strong></div>
+          <div class="settings-row"><span>Session</span><strong id="sessionStatus">Checking</strong></div>
+          <button class="logout-btn" data-logout type="button">Log out</button>
+        </article>
+
+        <article class="settings-card">
+          <h2>Supabase</h2>
+          <div class="settings-row"><span>Client status</span><strong id="supabaseStatus">Checking</strong></div>
+          <div class="settings-row"><span>Quote requests</span><strong id="quoteStatus">Checking</strong></div>
+          <p class="page-subtitle">Admin permissions will be tightened before storing real client data.</p>
+        </article>
+      </div>
+    </main>
+  </div>
+
+  <script type="module">
+    import { getQuoteCounts, initAdminPage } from "./admin.js";
+
+    const admin = await initAdminPage("settings");
+    const accountEmail = document.getElementById("accountEmail");
+    const sessionStatus = document.getElementById("sessionStatus");
+    const supabaseStatus = document.getElementById("supabaseStatus");
+    const quoteStatus = document.getElementById("quoteStatus");
+
+    if (!admin.redirecting && admin.configError) {
+      accountEmail.textContent = "-";
+      sessionStatus.textContent = "Unavailable";
+      supabaseStatus.textContent = admin.configError;
+      quoteStatus.textContent = "Unavailable";
+    } else if (!admin.redirecting) {
+      accountEmail.textContent = admin.session?.user?.email || "-";
+      sessionStatus.textContent = admin.session ? "Signed in" : "No active session";
+
+      try {
+        const counts = await getQuoteCounts();
+        supabaseStatus.textContent = "Connected";
+        quoteStatus.textContent = `${counts.total} request${counts.total === 1 ? "" : "s"}`;
+      } catch (error) {
+        supabaseStatus.textContent = error.message || "Connection check failed";
+        quoteStatus.textContent = "Unavailable";
+      }
+    }
+  </script>
+</body>
+</html>

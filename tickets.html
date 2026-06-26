@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <title>Tickets - Saltbox Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" aria-label="Admin navigation">
+      <a class="brand" href="index.html" aria-label="Saltbox home"><span class="mark" aria-hidden="true"></span>Saltbox</a>
+      <p class="preview-label">Admin</p>
+      <nav aria-label="Admin pages">
+        <ul class="nav-list">
+          <li><a class="nav-item" data-page="dashboard" href="admin.html">Dashboard</a></li>
+          <li><a class="nav-item" data-page="requests" href="requests.html">Requests</a></li>
+          <li><a class="nav-item" data-page="tickets" href="tickets.html">Tickets</a></li>
+          <li><a class="nav-item" data-page="customers" href="customers.html">Customers</a></li>
+          <li><a class="nav-item" data-page="subscriptions" href="subscriptions.html">Subscriptions</a></li>
+          <li><a class="nav-item" data-page="settings" href="settings.html">Settings</a></li>
+        </ul>
+      </nav>
+      <div class="sidebar-footer"><a class="back-link" href="index.html">Back to site</a></div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div><div class="page-kicker">Support</div><h1>Tickets</h1><p class="page-subtitle">Support tickets will live here after the ticket workflow is connected.</p></div>
+        <div class="top-actions">
+          <span class="session-email" data-session-email></span>
+          <button class="logout-btn" data-logout type="button">Log out</button>
+        </div>
+      </header>
+
+      <article class="panel">
+        <header class="panel-head">
+          <div><h2 class="panel-title">Tickets</h2><p class="panel-subtitle">No ticket table is connected yet</p></div>
+          <button class="button-link disabled" type="button" disabled>New ticket</button>
+        </header>
+        <div class="empty-state">
+          <p>No tickets yet.</p>
+          <p>Ticket creation will be connected in the next phase.</p>
+        </div>
+      </article>
+    </main>
+  </div>
+
+  <script type="module">
+    import { initAdminPage } from "./admin.js";
+    await initAdminPage("tickets");
+  </script>
+</body>
+</html>

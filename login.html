@@ -89,11 +89,7 @@
     const form = document.getElementById("loginForm");
     const submitButton = document.getElementById("submitButton");
     const status = document.getElementById("loginStatus");
-    const params = new URLSearchParams(window.location.search);
-    const requestedRedirect = params.get("redirect") || "admin.html";
-    const redirectTo = requestedRedirect.includes("://") || requestedRedirect.startsWith("//")
-      ? "admin.html"
-      : requestedRedirect;
+    const redirectTo = "admin.html";
 
     function setStatus(message, state = "") {
       status.textContent = message;
