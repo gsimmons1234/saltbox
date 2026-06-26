@@ -39,10 +39,10 @@
       </header>
 
       <section class="metrics" aria-label="Dashboard summary">
-        <article class="metric"><div class="metric-head"><span>New quote requests</span><span class="metric-icon">↗</span></div><div class="metric-value" id="newQuoteCount">--</div><div class="metric-detail" id="newQuoteDetail">Loading</div></article>
-        <article class="metric"><div class="metric-head"><span>Total quote requests</span><span class="metric-icon">#</span></div><div class="metric-value" id="totalQuoteCount">--</div><div class="metric-detail" id="totalQuoteDetail">Loading</div></article>
-        <article class="metric"><div class="metric-head"><span>Open tickets</span><span class="metric-icon">◌</span></div><div class="metric-value">0</div><div class="metric-detail">No tickets yet</div></article>
-        <article class="metric"><div class="metric-head"><span>Active subscriptions</span><span class="metric-icon">◈</span></div><div class="metric-value">0</div><div class="metric-detail">No subscriptions yet</div></article>
+        <a class="metric metric-link" href="requests.html"><div class="metric-head"><span>New quote requests</span><span class="metric-icon" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16v13H7l-3 3V4Z"/><path d="M8 9h8M8 13h5"/></svg></span></div><div class="metric-value" id="newQuoteCount">--</div><div class="metric-detail" id="newQuoteDetail">Loading</div></a>
+        <a class="metric metric-link" href="requests.html"><div class="metric-head"><span>Total quote requests</span><span class="metric-icon" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v5h5M10 12h6M10 16h6"/></svg></span></div><div class="metric-value" id="totalQuoteCount">--</div><div class="metric-detail" id="totalQuoteDetail">Loading</div></a>
+        <a class="metric metric-link" href="tickets.html"><div class="metric-head"><span>Open tickets</span><span class="metric-icon" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/><path d="M9 9h6M9 13h4"/></svg></span></div><div class="metric-value">0</div><div class="metric-detail">No tickets yet</div></a>
+        <a class="metric metric-link" href="subscriptions.html"><div class="metric-head"><span>Active subscriptions</span><span class="metric-icon" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h3"/></svg></span></div><div class="metric-value">0</div><div class="metric-detail">No subscriptions yet</div></a>
       </section>
 
       <section class="panels" aria-label="Dashboard details">
@@ -61,9 +61,9 @@
         </article>
 
         <div class="quick-grid" aria-label="Admin sections">
-          <a class="resource-card" href="tickets.html"><h2>Tickets</h2><p>No tickets yet. Ticket creation will be connected in the next phase.</p><span class="count">0 open</span></a>
-          <a class="resource-card" href="customers.html"><h2>Customers</h2><p>Customer records can be derived from quote requests until a customer table is ready.</p><span class="count" id="customerPreviewCount">Loading</span></a>
-          <a class="resource-card" href="subscriptions.html"><h2>Subscriptions</h2><p>No active subscriptions yet. Billing will be connected later.</p><span class="count">0 active</span></a>
+          <a class="resource-card" href="tickets.html"><div class="resource-head"><h2>Tickets</h2><span class="card-icon" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg></span></div><p>No tickets yet. Ticket creation will be connected in the next phase.</p><span class="count">0 open</span></a>
+          <a class="resource-card" href="customers.html"><div class="resource-head"><h2>Customers</h2><span class="card-icon" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="9.5" cy="7" r="4"/><path d="M21 21v-2a4 4 0 0 0-3-3.85"/></svg></span></div><p>Customer records can be derived from quote requests until a customer table is ready.</p><span class="count" id="customerPreviewCount">Loading</span></a>
+          <a class="resource-card" href="subscriptions.html"><div class="resource-head"><h2>Subscriptions</h2><span class="card-icon" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h3"/></svg></span></div><p>No active subscriptions yet. Billing will be connected later.</p><span class="count">0 active</span></a>
         </div>
       </section>
     </main>
