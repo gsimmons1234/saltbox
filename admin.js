@@ -42,6 +42,35 @@ export const customerColumns = [
   "pricing_notes",
 ].join(", ");
 
+export const ticketColumns = [
+  "id",
+  "created_at",
+  "updated_at",
+  "customer_id",
+  "quote_request_id",
+  "title",
+  "description",
+  "priority",
+  "status",
+  "assigned_to",
+  "created_by",
+  "customer:customers(name, business_name, email)",
+].join(", ");
+
+export const subscriptionColumns = [
+  "id",
+  "customer_id",
+  "created_at",
+  "updated_at",
+  "status",
+  "plan_name",
+  "amount",
+  "interval",
+  "stripe_subscription_id",
+  "stripe_customer_id",
+  "customer:customers(name, business_name, email)",
+].join(", ");
+
 export function html(value) {
   return String(value ?? "").replace(/[&<>"']/g, (char) => ({
     "&": "&amp;",
@@ -163,6 +192,34 @@ export async function getCustomerCount() {
 
   if (error) {
     console.error("Supabase customers count failed:", error);
+    throw error;
+  }
+
+  return count || 0;
+}
+
+export async function getOpenTicketCount() {
+  const { count, error } = await supabase
+    .from("tickets")
+    .select("id", { count: "exact", head: true })
+    .neq("status", "Closed");
+
+  if (error) {
+    console.error("Supabase tickets count failed:", error);
+    throw error;
+  }
+
+  return count || 0;
+}
+
+export async function getActiveSubscriptionCount() {
+  const { count, error } = await supabase
+    .from("subscriptions")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "Active");
+
+  if (error) {
+    console.error("Supabase subscriptions count failed:", error);
     throw error;
   }
 
@@ -346,6 +403,113 @@ export async function createCustomerInvoice(payload) {
 
   if (error) {
     console.error("Supabase customer_invoices insert failed:", error);
+    throw error;
+  }
+
+  return data;
+}
+
+export async function getTickets({ customerId } = {}) {
+  let query = supabase
+    .from("tickets")
+    .select(ticketColumns)
+    .order("updated_at", { ascending: false });
+
+  if (customerId) query = query.eq("customer_id", customerId);
+
+  const { data, error } = await query;
+  if (error) {
+    console.error("Supabase tickets select failed:", error);
+    throw error;
+  }
+
+  return data || [];
+}
+
+export async function getSubscriptions() {
+  const { data, error } = await supabase
+    .from("subscriptions")
+    .select(subscriptionColumns)
+    .order("updated_at", { ascending: false });
+
+  if (error) {
+    console.error("Supabase subscriptions select failed:", error);
+    throw error;
+  }
+
+  return data || [];
+}
+
+export async function getTicket(id) {
+  const { data, error } = await supabase
+    .from("tickets")
+    .select(ticketColumns)
+    .eq("id", id)
+    .single();
+
+  if (error) {
+    console.error("Supabase ticket select failed:", error);
+    throw error;
+  }
+
+  return data;
+}
+
+export async function createTicket(payload) {
+  const { data, error } = await supabase
+    .from("tickets")
+    .insert(payload)
+    .select(ticketColumns)
+    .single();
+
+  if (error) {
+    console.error("Supabase ticket insert failed:", error);
+    throw error;
+  }
+
+  return data;
+}
+
+export async function updateTicket(id, payload) {
+  const { data, error } = await supabase
+    .from("tickets")
+    .update({ ...payload, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .select(ticketColumns)
+    .single();
+
+  if (error) {
+    console.error("Supabase ticket update failed:", error);
+    throw error;
+  }
+
+  return data;
+}
+
+export async function getTicketComments(ticketId) {
+  const { data, error } = await supabase
+    .from("ticket_comments")
+    .select("id, ticket_id, created_at, created_by, comment")
+    .eq("ticket_id", ticketId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Supabase ticket_comments select failed:", error);
+    throw error;
+  }
+
+  return data || [];
+}
+
+export async function addTicketComment(ticketId, comment, createdBy) {
+  const { data, error } = await supabase
+    .from("ticket_comments")
+    .insert({ ticket_id: ticketId, comment, created_by: createdBy || null })
+    .select("id, ticket_id, created_at, created_by, comment")
+    .single();
+
+  if (error) {
+    console.error("Supabase ticket_comments insert failed:", error);
     throw error;
   }
 

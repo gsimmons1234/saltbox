@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <title>Client Dashboard - Saltbox</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="admin.css">
+  <style>
+    .client-app { min-height: 100vh; }
+    .client-header { display: flex; justify-content: space-between; align-items: center; gap: 18px; margin-bottom: 28px; }
+    .client-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+    .client-grid .wide { grid-column: 1 / -1; }
+    @media (max-width: 900px) {
+      .client-header { align-items: flex-start; flex-direction: column; }
+      .client-grid { grid-template-columns: 1fr; }
+      .client-grid .wide { grid-column: auto; }
+    }
+  </style>
+</head>
+<body>
+  <main class="main client-app">
+    <header class="client-header">
+      <div>
+        <a class="brand" href="index.html" aria-label="Saltbox home"><span class="mark" aria-hidden="true"></span>Saltbox</a>
+        <div class="page-kicker" style="margin-top:24px;">Client Portal</div>
+        <h1 id="pageTitle">Client dashboard</h1>
+        <p class="page-subtitle" id="pageSubtitle">Loading your account.</p>
+      </div>
+      <div class="top-actions">
+        <button class="button-link" id="manageBilling" type="button">Manage billing</button>
+        <span class="session-email" id="sessionEmail"></span>
+        <button class="logout-btn" id="logoutButton" type="button">Log out</button>
+      </div>
+    </header>
+
+    <p class="form-status" id="portalStatus" role="status" aria-live="polite"></p>
+
+    <section class="client-grid">
+      <article class="panel">
+        <header class="panel-head"><div><h2 class="panel-title">Business info</h2><p class="panel-subtitle">Matched to your login email</p></div></header>
+        <div class="panel-body meta-list" id="businessInfo"></div>
+      </article>
+
+      <article class="panel">
+        <header class="panel-head"><div><h2 class="panel-title">Plan</h2><p class="panel-subtitle">Current project and care plan</p></div></header>
+        <div class="panel-body meta-list" id="planInfo"></div>
+      </article>
+
+      <article class="panel wide">
+        <header class="panel-head"><div><h2 class="panel-title">Invoices</h2><p class="panel-subtitle" id="invoiceCount">Loading invoices</p></div></header>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Title</th><th>Status</th><th>Amount</th><th>Due</th></tr></thead>
+            <tbody id="invoicesBody"><tr class="table-state"><td colspan="4">Loading invoices...</td></tr></tbody>
+          </table>
+        </div>
+        <p class="empty" id="invoicesEmpty">No invoices yet.</p>
+      </article>
+
+      <article class="panel">
+        <header class="panel-head"><div><h2 class="panel-title">Tickets</h2><p class="panel-subtitle" id="ticketCount">Loading tickets</p></div></header>
+        <div class="panel-body" id="ticketsList"></div>
+      </article>
+
+      <article class="panel">
+        <header class="panel-head"><div><h2 class="panel-title">Files</h2><p class="panel-subtitle" id="fileCount">Loading files</p></div></header>
+        <div class="panel-body" id="filesList"></div>
+      </article>
+    </section>
+  </main>
+
+  <script type="module">
+    import { supabase, supabaseReady, supabaseConfigError } from "./supabase-client.js";
+
+    const status = document.getElementById("portalStatus");
+    const businessInfo = document.getElementById("businessInfo");
+    const planInfo = document.getElementById("planInfo");
+    const invoicesBody = document.getElementById("invoicesBody");
+    const invoicesEmpty = document.getElementById("invoicesEmpty");
+    const ticketsList = document.getElementById("ticketsList");
+    const filesList = document.getElementById("filesList");
+    let customer = null;
+
+    function html(value) {
+      return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#039;",
+      }[char]));
+    }
+
+    function formatDate(value) {
+      if (!value) return "-";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return "-";
+      return new Intl.DateTimeFormat("en", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }).format(date);
+    }
+
+    function money(value) {
+      const number = Number(value || 0);
+      return `$${number.toFixed(2)}`;
+    }
+
+    function setStatus(message, state = "") {
+      status.textContent = message;
+      status.className = `form-status ${state}`.trim();
+    }
+
+    function meta(label, value) {
+      return `<div class="meta-row"><span>${html(label)}</span><strong>${html(value || "-")}</strong></div>`;
+    }
+
+    async function callPortalFunction() {
+      const response = await fetch("/.netlify/functions/create-customer-portal-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customer_id: customer?.id }),
+      });
+      const contentType = response.headers.get("content-type") || "";
+      const body = contentType.includes("application/json") ? await response.json() : {};
+      if (!response.ok || body.error) throw new Error(body.error || "Stripe portal is not configured yet.");
+      return body;
+    }
+
+    async function loadPortal(session) {
+      const email = session.user.email;
+      document.getElementById("sessionEmail").textContent = email || "";
+
+      const { data, error } = await supabase
+        .from("customers")
+        .select("id, created_at, name, email, phone, business_name, business_type, status, selected_package, package_price, selected_care_plan, care_plan_price")
+        .eq("email", email)
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!data) {
+        document.getElementById("pageSubtitle").textContent = "No customer account is linked to this login email yet.";
+        businessInfo.innerHTML = '<p class="empty visible">No matching customer record.</p>';
+        planInfo.innerHTML = '<p class="empty visible">No plan data available.</p>';
+        invoicesBody.innerHTML = "";
+        invoicesEmpty.classList.add("visible");
+        ticketsList.innerHTML = '<p class="empty visible">No tickets available.</p>';
+        filesList.innerHTML = '<p class="empty visible">No files available.</p>';
+        return;
+      }
+
+      customer = data;
+      document.getElementById("pageTitle").textContent = data.business_name || data.name || "Client dashboard";
+      document.getElementById("pageSubtitle").textContent = "Your Saltbox account details.";
+
+      businessInfo.innerHTML = [
+        meta("Name", data.name),
+        meta("Email", data.email),
+        meta("Phone", data.phone),
+        meta("Business", data.business_name),
+        meta("Business type", data.business_type),
+        meta("Status", data.status),
+      ].join("");
+
+      planInfo.innerHTML = [
+        meta("Package", data.selected_package),
+        meta("Package price", data.package_price ? money(data.package_price) : "-"),
+        meta("Care plan", data.selected_care_plan),
+        meta("Monthly care", data.care_plan_price ? money(data.care_plan_price) : "-"),
+      ].join("");
+
+      const [invoiceResult, ticketResult, fileResult] = await Promise.all([
+        supabase.from("customer_invoices").select("id, title, amount, status, due_date, created_at").eq("customer_id", data.id).order("created_at", { ascending: false }),
+        supabase.from("tickets").select("id, title, status, priority, updated_at").eq("customer_id", data.id).order("updated_at", { ascending: false }),
+        supabase.from("customer_files").select("id, file_name, created_at").eq("customer_id", data.id).order("created_at", { ascending: false }),
+      ]);
+
+      if (invoiceResult.error) throw invoiceResult.error;
+      if (ticketResult.error) throw ticketResult.error;
+      if (fileResult.error) throw fileResult.error;
+
+      const invoices = invoiceResult.data || [];
+      document.getElementById("invoiceCount").textContent = `${invoices.length} invoice${invoices.length === 1 ? "" : "s"}`;
+      if (!invoices.length) {
+        invoicesBody.innerHTML = "";
+        invoicesEmpty.classList.add("visible");
+      } else {
+        invoicesEmpty.classList.remove("visible");
+        invoicesBody.innerHTML = invoices.map((row) => `
+          <tr>
+            <td class="entity">${html(row.title || "Untitled invoice")}</td>
+            <td>${html(row.status || "Draft")}</td>
+            <td>${money(row.amount)}</td>
+            <td class="muted">${row.due_date ? html(row.due_date) : "-"}</td>
+          </tr>
+        `).join("");
+      }
+
+      const tickets = ticketResult.data || [];
+      document.getElementById("ticketCount").textContent = `${tickets.length} ticket${tickets.length === 1 ? "" : "s"}`;
+      ticketsList.innerHTML = tickets.length ? tickets.map((row) => `
+        <div class="invoice-row"><div><strong>${html(row.title || "Untitled ticket")}</strong><div class="muted">${html(row.priority || "Normal")} - ${formatDate(row.updated_at)}</div></div><span class="status ${html((row.status || "Open").toLowerCase().replace(/\s+/g, "-"))}">${html(row.status || "Open")}</span></div>
+      `).join("") : '<p class="empty visible">No tickets yet.</p>';
+
+      const files = fileResult.data || [];
+      document.getElementById("fileCount").textContent = `${files.length} file${files.length === 1 ? "" : "s"}`;
+      filesList.innerHTML = files.length ? files.map((row) => `
+        <div class="file-row"><span>${html(row.file_name || "Untitled file")}</span><span class="muted">${formatDate(row.created_at)}</span></div>
+      `).join("") : '<p class="empty visible">No files yet.</p>';
+    }
+
+    if (!supabaseReady) {
+      setStatus(supabaseConfigError, "error");
+    } else {
+      const { data, error } = await supabase.auth.getSession();
+      if (error || !data.session) {
+        window.location.replace("client-login.html");
+      } else {
+        try {
+          await loadPortal(data.session);
+        } catch (error) {
+          setStatus(error.message || "Could not load client dashboard.", "error");
+        }
+      }
+    }
+
+    document.getElementById("logoutButton").addEventListener("click", async () => {
+      await supabase.auth.signOut();
+      window.location.replace("client-login.html");
+    });
+
+    document.getElementById("manageBilling").addEventListener("click", async (event) => {
+      event.currentTarget.disabled = true;
+      setStatus("Opening billing portal...");
+      try {
+        const result = await callPortalFunction();
+        if (result.url) window.location.href = result.url;
+      } catch (error) {
+        setStatus(error.message || "Stripe portal is not configured yet.", "error");
+      } finally {
+        event.currentTarget.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

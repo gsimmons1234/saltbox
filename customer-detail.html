@@ -33,10 +33,12 @@
         <div><div class="page-kicker">Customer</div><h1 id="pageTitle">Customer profile</h1><p class="page-subtitle" id="pageSubtitle">Loading customer account.</p></div>
         <div class="top-actions">
           <a class="button-link" href="customers.html">Back to customers</a>
+          <button class="button-link primary" id="createCustomerTicket" type="button">Create ticket</button>
           <span class="session-email" data-session-email></span>
           <button class="logout-btn" data-logout type="button">Log out</button>
         </div>
       </header>
+      <p class="form-status" id="ticketActionStatus" role="status" aria-live="polite"></p>
 
       <div class="detail-grid">
         <article class="panel">
@@ -119,7 +121,7 @@
         <article class="panel wide">
           <header class="panel-head"><div><h2 class="panel-title">Invoices</h2><p class="panel-subtitle">Draft invoice records</p></div></header>
           <div class="panel-body">
-            <p class="page-subtitle">Stripe invoice creation will be connected through a Netlify Function in the next phase.</p>
+            <p class="page-subtitle">Stripe sending/payment will be connected through Netlify Functions.</p>
             <form id="invoiceForm" style="margin-top:16px;">
               <div class="form-grid">
                 <div class="field"><label for="invoiceTitle">Invoice title</label><input id="invoiceTitle" name="title" type="text" required></div>
@@ -141,6 +143,7 @@
     import {
       addCustomerNote,
       createCustomerInvoice,
+      createTicket,
       formatDate,
       getCustomer,
       getCustomerFiles,
@@ -221,8 +224,34 @@
         return;
       }
       list.innerHTML = rows.map((row) => `
-        <div class="invoice-row"><div><strong>${html(row.title || "Untitled invoice")}</strong><div class="muted">${html(row.status || "Draft")} · Due ${row.due_date ? html(row.due_date) : "-"}</div></div><span>$${Number(row.amount || 0).toFixed(2)}</span></div>
+        <div class="invoice-row">
+          <div><strong>${html(row.title || "Untitled invoice")}</strong><div class="muted">${html(row.status || "Draft")} - Due ${row.due_date ? html(row.due_date) : "-"}</div></div>
+          <div class="button-row"><span>$${Number(row.amount || 0).toFixed(2)}</span><button class="button-link" type="button" data-create-stripe-invoice="${html(row.id)}">Create Stripe link</button></div>
+        </div>
       `).join("");
+    }
+
+    function isStorageSetupError(error) {
+      const message = String(error?.message || "").toLowerCase();
+      return message.includes("bucket") ||
+        message.includes("policy") ||
+        message.includes("permission") ||
+        message.includes("row-level security") ||
+        message.includes("not found");
+    }
+
+    async function callStripeFunction(path, payload) {
+      const response = await fetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const contentType = response.headers.get("content-type") || "";
+      const body = contentType.includes("application/json") ? await response.json() : {};
+      if (!response.ok || body.error) {
+        throw new Error(body.error || "Netlify Function is not available in this local static server.");
+      }
+      return body;
     }
 
     async function refreshRelated() {
@@ -310,6 +339,28 @@
       }, "pricingStatus");
     });
 
+    document.getElementById("createCustomerTicket").addEventListener("click", async (event) => {
+      if (!customerId || !customer) return;
+      const button = event.currentTarget;
+      button.disabled = true;
+      setStatus("ticketActionStatus", "Creating ticket...");
+      try {
+        await createTicket({
+          customer_id: customerId,
+          title: `Follow up with ${customer.name || customer.business_name || "customer"}`,
+          description: "Customer follow-up created from the customer profile.",
+          priority: "Normal",
+          status: "Open",
+          created_by: admin.session?.user?.email || null,
+        });
+        setStatus("ticketActionStatus", "Ticket created. Opening tickets...", "success");
+        window.location.href = "tickets.html";
+      } catch (error) {
+        setStatus("ticketActionStatus", `${error.message || "Could not create ticket."} Run supabase-launch-schema.sql before using tickets.`, "error");
+        button.disabled = false;
+      }
+    });
+
     document.getElementById("noteForm").addEventListener("submit", async (event) => {
       event.preventDefault();
       const note = event.currentTarget.elements.note.value.trim();
@@ -336,7 +387,7 @@
         renderFiles(await getCustomerFiles(customerId));
         setStatus("fileStatus", "File uploaded.", "success");
       } catch (error) {
-        setStatus("fileStatus", error.message || "File uploads require Supabase Storage setup.", "error");
+        setStatus("fileStatus", isStorageSetupError(error) ? "Storage bucket or policy is not configured yet." : (error.message || "Could not upload file."), "error");
       }
     });
 
@@ -358,6 +409,25 @@
         setStatus("invoiceStatus", "Draft invoice created.", "success");
       } catch (error) {
         setStatus("invoiceStatus", error.message || "Could not create invoice.", "error");
+      }
+    });
+
+    document.getElementById("invoicesList").addEventListener("click", async (event) => {
+      const button = event.target.closest("[data-create-stripe-invoice]");
+      if (!button) return;
+      button.disabled = true;
+      setStatus("invoiceStatus", "Calling Stripe invoice function...");
+      try {
+        const result = await callStripeFunction("/.netlify/functions/create-invoice", {
+          invoice_id: button.dataset.createStripeInvoice,
+          customer_id: customerId,
+        });
+        setStatus("invoiceStatus", result.url ? "Stripe invoice link created." : "Stripe function completed.", "success");
+        if (result.url) window.open(result.url, "_blank", "noopener");
+      } catch (error) {
+        setStatus("invoiceStatus", error.message || "Stripe is not configured yet.", "error");
+      } finally {
+        button.disabled = false;
       }
     });
   </script>

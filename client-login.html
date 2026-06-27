@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <title>Client Login - Saltbox</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="admin.css">
+  <style>
+    body { min-height: 100vh; display: grid; place-items: center; padding: 28px; }
+    .client-login { width: min(100%, 430px); }
+    .client-login .brand { padding: 0; margin-bottom: 34px; }
+  </style>
+</head>
+<body>
+  <main class="client-login">
+    <a class="brand" href="index.html" aria-label="Saltbox home"><span class="mark" aria-hidden="true"></span>Saltbox</a>
+    <div class="page-kicker">Client Portal</div>
+    <h1>Client login</h1>
+    <p class="page-subtitle">Use the email address connected to your Saltbox customer account.</p>
+
+    <form class="panel form-panel" id="clientLoginForm" style="margin-top:24px;">
+      <div class="field">
+        <label for="email">Email address</label>
+        <input id="email" name="email" type="email" autocomplete="email" required>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+      </div>
+      <button class="button-link primary" id="submitButton" type="submit">Log in</button>
+      <p class="form-status" id="loginStatus" role="status" aria-live="polite"></p>
+    </form>
+
+    <a class="back-link" href="index.html" style="margin-top:18px;">Back to site</a>
+  </main>
+
+  <script type="module">
+    import { supabase, supabaseReady, supabaseConfigError } from "./supabase-client.js";
+
+    const form = document.getElementById("clientLoginForm");
+    const submitButton = document.getElementById("submitButton");
+    const status = document.getElementById("loginStatus");
+
+    function setStatus(message, state = "") {
+      status.textContent = message;
+      status.className = `form-status ${state}`.trim();
+    }
+
+    if (!supabaseReady) {
+      submitButton.disabled = true;
+      setStatus(supabaseConfigError, "error");
+    } else {
+      const { data } = await supabase.auth.getSession();
+      if (data.session) window.location.replace("client-dashboard.html");
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!supabaseReady) return;
+
+      submitButton.disabled = true;
+      setStatus("Checking credentials...");
+
+      const { error } = await supabase.auth.signInWithPassword({
+        email: form.email.value.trim(),
+        password: form.password.value,
+      });
+
+      if (error) {
+        submitButton.disabled = false;
+        setStatus(error.message, "error");
+        return;
+      }
+
+      setStatus("Signed in. Opening portal...", "success");
+      window.location.replace("client-dashboard.html");
+    });
+  </script>
+</body>
+</html>

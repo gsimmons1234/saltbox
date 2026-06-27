@@ -1,0 +1,13 @@
+{
+  "name": "saltbox",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Saltbox static site with Supabase admin and Netlify Function billing scaffolds.",
+  "scripts": {
+    "serve": "python3 -m http.server 8080"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
+    "stripe": "^17.3.1"
+  }
+}

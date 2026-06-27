@@ -30,7 +30,7 @@
 
     <main class="main">
       <header class="topbar">
-        <div><div class="page-kicker">Billing</div><h1>Subscriptions</h1><p class="page-subtitle">Care-plan billing records will appear here when billing is connected.</p></div>
+        <div><div class="page-kicker">Billing</div><h1>Subscriptions</h1><p class="page-subtitle">Care-plan billing records from Supabase and Stripe webhooks.</p></div>
         <div class="top-actions">
           <span class="session-email" data-session-email></span>
           <button class="logout-btn" data-logout type="button">Log out</button>
@@ -38,18 +38,69 @@
       </header>
 
       <article class="panel">
-        <header class="panel-head"><div><h2 class="panel-title">Subscriptions</h2><p class="panel-subtitle">No subscription table is connected yet</p></div></header>
-        <div class="empty-state">
-          <p>No subscriptions yet.</p>
-          <p>Billing/subscriptions will be connected later with Stripe or Supabase tables.</p>
+        <header class="panel-head"><div><h2 class="panel-title">Subscriptions</h2><p class="panel-subtitle" id="subscriptionCount">Loading from Supabase</p></div></header>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Customer</th><th>Plan</th><th>Status</th><th>Amount</th><th>Interval</th><th>Updated</th></tr></thead>
+            <tbody id="subscriptionsBody"><tr class="table-state"><td colspan="6">Loading subscriptions...</td></tr></tbody>
+          </table>
         </div>
+        <p class="empty" id="subscriptionsEmpty">No subscriptions yet.</p>
       </article>
     </main>
   </div>
 
   <script type="module">
-    import { initAdminPage } from "./admin.js";
-    await initAdminPage("subscriptions");
+    import { getSubscriptions, html, initAdminPage, setTableState, statusClass, formatDate } from "./admin.js";
+
+    const admin = await initAdminPage("subscriptions");
+    const body = document.getElementById("subscriptionsBody");
+    const empty = document.getElementById("subscriptionsEmpty");
+    const count = document.getElementById("subscriptionCount");
+
+    function customerLabel(row) {
+      const customer = row.customer;
+      if (!customer) return "-";
+      return customer.business_name || customer.name || customer.email || "-";
+    }
+
+    function amount(row) {
+      const number = Number(row.amount || 0);
+      return row.amount === null || row.amount === undefined ? "-" : `$${number.toFixed(2)}`;
+    }
+
+    if (!admin.redirecting && admin.configError) {
+      setTableState(body, admin.configError, true, 6);
+      count.textContent = "Unavailable";
+    } else if (!admin.redirecting) {
+      try {
+        const rows = await getSubscriptions();
+        count.textContent = `${rows.length} subscription${rows.length === 1 ? "" : "s"}`;
+
+        if (!rows.length) {
+          body.innerHTML = "";
+          empty.classList.add("visible");
+        } else {
+          empty.classList.remove("visible");
+          body.innerHTML = rows.map((row) => {
+            const status = row.status || "Draft";
+            return `
+              <tr>
+                <td class="entity">${html(customerLabel(row))}</td>
+                <td>${html(row.plan_name || "Care plan")}</td>
+                <td><span class="status ${statusClass(status)}">${html(status)}</span></td>
+                <td>${amount(row)}</td>
+                <td>${html(row.interval || "month")}</td>
+                <td class="muted">${formatDate(row.updated_at || row.created_at)}</td>
+              </tr>
+            `;
+          }).join("");
+        }
+      } catch (error) {
+        setTableState(body, `${error.message || "Could not load subscriptions."} Run supabase-launch-schema.sql in Supabase before using subscriptions.`, true, 6);
+        count.textContent = "Setup needed";
+      }
+    }
   </script>
 </body>
 </html>

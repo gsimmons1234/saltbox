@@ -30,7 +30,7 @@
 
     <main class="main">
       <header class="topbar">
-        <div><div class="page-kicker">Support</div><h1>Tickets</h1><p class="page-subtitle">Support tickets will live here after the ticket workflow is connected.</p></div>
+        <div><div class="page-kicker">Support</div><h1>Tickets</h1><p class="page-subtitle">Track client support and implementation follow-up.</p></div>
         <div class="top-actions">
           <span class="session-email" data-session-email></span>
           <button class="logout-btn" data-logout type="button">Log out</button>
@@ -39,20 +39,384 @@
 
       <article class="panel">
         <header class="panel-head">
-          <div><h2 class="panel-title">Tickets</h2><p class="panel-subtitle">No ticket table is connected yet</p></div>
-          <button class="button-link disabled" type="button" disabled>New ticket</button>
+          <div><h2 class="panel-title">Tickets</h2><p class="panel-subtitle" id="ticketCount">Loading from Supabase</p></div>
+          <button class="button-link primary" id="newTicketToggle" type="button">New ticket</button>
         </header>
-        <div class="empty-state">
-          <p>No tickets yet.</p>
-          <p>Ticket creation will be connected in the next phase.</p>
+        <div class="ticket-controls" aria-label="Ticket sorting and filters">
+          <label class="search ticket-search"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="ticketSearch" type="search" placeholder="Search tickets" aria-label="Search tickets"></label>
+          <div class="field ticket-control-field"><label for="ticketSort">Sort tickets by</label><select id="ticketSort"><option value="priority" selected>Urgency</option><option value="customer">Customer name</option><option value="created-desc">Date created: newest first</option><option value="created-asc">Date created: oldest first</option><option value="status">Status</option></select></div>
+          <div class="field ticket-control-field"><label for="ticketStatusFilter">Status</label><select id="ticketStatusFilter"><option value="">All statuses</option><option>Open</option><option>In progress</option><option>Waiting</option><option>Closed</option></select></div>
+          <div class="field ticket-control-field"><label for="ticketPriorityFilter">Priority</label><select id="ticketPriorityFilter"><option value="">All priorities</option><option>Urgent</option><option>High</option><option>Normal</option><option>Low</option></select></div>
+        </div>
+        <form class="form-panel" id="ticketForm" hidden>
+          <div class="form-grid">
+            <div class="field full"><label for="ticketTitle">Title</label><input id="ticketTitle" name="title" type="text" required></div>
+            <div class="field"><label for="ticketCustomer">Customer</label><select id="ticketCustomer" name="customer_id"><option value="">No linked customer</option></select></div>
+            <div class="field"><label for="ticketPriority">Priority</label><select id="ticketPriority" name="priority"><option>Low</option><option selected>Normal</option><option>High</option><option>Urgent</option></select></div>
+            <div class="field"><label for="ticketStatus">Status</label><select id="ticketStatus" name="status"><option selected>Open</option><option>In progress</option><option>Waiting</option><option>Closed</option></select></div>
+            <div class="field"><label for="ticketAssignedTo">Assigned to</label><input id="ticketAssignedTo" name="assigned_to" type="text" placeholder="Optional"></div>
+            <div class="field full"><label for="ticketDescription">Description</label><textarea id="ticketDescription" name="description"></textarea></div>
+          </div>
+          <div class="button-row" style="margin-top:16px;"><button class="button-link primary" type="submit">Create ticket</button><button class="button-link" id="cancelTicketCreate" type="button">Cancel</button></div>
+          <p class="form-status" id="ticketFormStatus" role="status" aria-live="polite"></p>
+        </form>
+        <div class="table-scroll ticket-table-scroll">
+          <table class="ticket-table">
+            <thead><tr><th>Title</th><th>Customer</th><th>Priority</th><th>Status</th><th>Assigned</th><th>Created</th><th></th></tr></thead>
+            <tbody id="ticketsBody"><tr class="table-state"><td colspan="7">Loading tickets...</td></tr></tbody>
+          </table>
+        </div>
+        <p class="empty" id="ticketsEmpty">No tickets yet.</p>
+      </article>
+
+      <article class="panel" id="ticketDetailPanel" hidden style="margin-top:18px;">
+        <header class="panel-head">
+          <div><h2 class="panel-title" id="detailTitle">Ticket detail</h2><p class="panel-subtitle" id="detailSubtitle">Select a ticket to view details.</p></div>
+          <button class="button-link" id="closeDetail" type="button">Close</button>
+        </header>
+        <div class="panel-body">
+          <div class="meta-list" id="detailMeta"></div>
+          <div class="button-row" style="margin-top:18px;">
+            <div class="field" style="min-width:190px;"><label for="detailPriority">Priority</label><select id="detailPriority"><option>Low</option><option>Normal</option><option>High</option><option>Urgent</option></select></div>
+            <div class="field" style="min-width:190px;"><label for="detailStatus">Status</label><select id="detailStatus"><option>Open</option><option>In progress</option><option>Waiting</option><option>Closed</option></select></div>
+          </div>
+          <p class="form-status" id="detailStatusMessage" role="status" aria-live="polite"></p>
+          <form id="commentForm" style="margin-top:18px;">
+            <div class="field"><label for="ticketComment">Add comment</label><textarea id="ticketComment" name="comment" required></textarea></div>
+            <div class="button-row" style="margin-top:12px;"><button class="button-link primary" type="submit">Save comment</button></div>
+            <p class="form-status" id="commentStatus" role="status" aria-live="polite"></p>
+          </form>
+          <div class="note-list" id="commentsList" style="margin-top:18px;"></div>
         </div>
       </article>
     </main>
   </div>
 
   <script type="module">
-    import { initAdminPage } from "./admin.js";
-    await initAdminPage("tickets");
+    import {
+      addTicketComment,
+      createTicket,
+      formatDate,
+      getCustomers,
+      getTicketComments,
+      getTickets,
+      html,
+      initAdminPage,
+      setTableState,
+      updateTicket
+    } from "./admin.js";
+
+    const admin = await initAdminPage("tickets");
+    const body = document.getElementById("ticketsBody");
+    const empty = document.getElementById("ticketsEmpty");
+    const count = document.getElementById("ticketCount");
+    const form = document.getElementById("ticketForm");
+    const formStatus = document.getElementById("ticketFormStatus");
+    const customerSelect = document.getElementById("ticketCustomer");
+    const detailPanel = document.getElementById("ticketDetailPanel");
+    const detailPriority = document.getElementById("detailPriority");
+    const detailStatus = document.getElementById("detailStatus");
+    const searchInput = document.getElementById("ticketSearch");
+    const sortSelect = document.getElementById("ticketSort");
+    const statusFilter = document.getElementById("ticketStatusFilter");
+    const priorityFilter = document.getElementById("ticketPriorityFilter");
+    const priorityOrder = { Urgent: 0, High: 1, Normal: 2, Low: 3 };
+    const statusOrder = { Open: 0, "In progress": 1, Waiting: 2, Closed: 3 };
+    let allTickets = [];
+    let tickets = [];
+    let activeTicket = null;
+
+    function setStatus(id, message, state = "") {
+      const node = document.getElementById(id);
+      node.textContent = message;
+      node.className = `form-status ${state}`.trim();
+    }
+
+    function customerLabel(row) {
+      const customer = row.customer;
+      if (!customer) return "-";
+      return customer.business_name || customer.name || customer.email || "-";
+    }
+
+    function customerSortLabel(row) {
+      const customer = row.customer;
+      return customer?.business_name || customer?.name || row.created_by || row.title || "";
+    }
+
+    function priorityValue(row) {
+      return row.priority || "Normal";
+    }
+
+    function statusValue(row) {
+      return row.status || "Open";
+    }
+
+    function priorityClass(value) {
+      return String(value || "Normal").toLowerCase().replace(/\s+/g, "-");
+    }
+
+    function sortText(value) {
+      return String(value || "").toLowerCase();
+    }
+
+    function dateTime(value) {
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+    }
+
+    function filteredTickets() {
+      const query = searchInput.value.trim().toLowerCase();
+      const selectedStatus = statusFilter.value;
+      const selectedPriority = priorityFilter.value;
+
+      return allTickets
+        .filter((row) => {
+          const priority = priorityValue(row);
+          const status = statusValue(row);
+          const searchText = [
+            row.title,
+            row.description,
+            priority,
+            status,
+            row.assigned_to,
+            row.created_by,
+            customerLabel(row),
+            customerSortLabel(row),
+          ].join(" ").toLowerCase();
+
+          return (!query || searchText.includes(query)) &&
+            (!selectedStatus || status === selectedStatus) &&
+            (!selectedPriority || priority === selectedPriority);
+        })
+        .sort((a, b) => {
+          const priorityDiff = (priorityOrder[priorityValue(a)] ?? priorityOrder.Normal) - (priorityOrder[priorityValue(b)] ?? priorityOrder.Normal);
+          const statusDiff = (statusOrder[statusValue(a)] ?? statusOrder.Open) - (statusOrder[statusValue(b)] ?? statusOrder.Open);
+
+          if (sortSelect.value === "customer") {
+            return sortText(customerSortLabel(a)).localeCompare(sortText(customerSortLabel(b))) || priorityDiff || dateTime(b.created_at) - dateTime(a.created_at);
+          }
+
+          if (sortSelect.value === "created-desc") {
+            return dateTime(b.created_at) - dateTime(a.created_at) || priorityDiff;
+          }
+
+          if (sortSelect.value === "created-asc") {
+            return dateTime(a.created_at) - dateTime(b.created_at) || priorityDiff;
+          }
+
+          if (sortSelect.value === "status") {
+            return statusDiff || priorityDiff || dateTime(b.created_at) - dateTime(a.created_at);
+          }
+
+          return priorityDiff || statusDiff || dateTime(b.created_at) - dateTime(a.created_at);
+        });
+    }
+
+    function renderTicketView() {
+      renderTickets(filteredTickets());
+    }
+
+    function renderTickets(rows) {
+      tickets = rows;
+      const total = allTickets.length;
+      const filtered = rows.length !== total || searchInput.value.trim() || statusFilter.value || priorityFilter.value;
+      count.textContent = filtered ? `${rows.length} of ${total} ticket${total === 1 ? "" : "s"}` : `${total} ticket${total === 1 ? "" : "s"}`;
+
+      if (!rows.length) {
+        body.innerHTML = "";
+        empty.textContent = total ? "No tickets match the current filters." : "No tickets yet.";
+        empty.classList.add("visible");
+        return;
+      }
+
+      empty.textContent = "No tickets yet.";
+      empty.classList.remove("visible");
+      body.innerHTML = rows.map((row) => {
+        const status = statusValue(row);
+        const priority = priorityValue(row);
+        const prioritySlug = priorityClass(priority);
+        return `
+          <tr class="ticket-row priority-${prioritySlug}" data-ticket-id="${html(row.id)}">
+            <td class="entity ticket-title-cell" data-label="Title">${html(row.title || "Untitled ticket")}</td>
+            <td data-label="Customer">${html(customerLabel(row))}</td>
+            <td data-label="Priority"><div class="ticket-cell-stack"><span class="priority-badge priority-${prioritySlug}">${html(priority)}</span><select data-ticket-priority="${html(row.id)}" aria-label="Ticket priority"><option${priority === "Low" ? " selected" : ""}>Low</option><option${priority === "Normal" ? " selected" : ""}>Normal</option><option${priority === "High" ? " selected" : ""}>High</option><option${priority === "Urgent" ? " selected" : ""}>Urgent</option></select></div></td>
+            <td data-label="Status"><select data-ticket-status="${html(row.id)}" aria-label="Ticket status"><option${status === "Open" ? " selected" : ""}>Open</option><option${status === "In progress" ? " selected" : ""}>In progress</option><option${status === "Waiting" ? " selected" : ""}>Waiting</option><option${status === "Closed" ? " selected" : ""}>Closed</option></select></td>
+            <td data-label="Assigned">${html(row.assigned_to || "-")}</td>
+            <td class="muted" data-label="Created">${formatDate(row.created_at)}</td>
+            <td data-label="Action"><button class="button-link" type="button" data-open-ticket="${html(row.id)}">Open</button></td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    function renderComments(rows) {
+      const list = document.getElementById("commentsList");
+      if (!rows.length) {
+        list.innerHTML = '<p class="empty visible">No comments yet.</p>';
+        return;
+      }
+      list.innerHTML = rows.map((row) => `
+        <article class="note-item">
+          <div class="note-meta">${formatDate(row.created_at)}${row.created_by ? ` - ${html(row.created_by)}` : ""}</div>
+          <p>${html(row.comment || "")}</p>
+        </article>
+      `).join("");
+    }
+
+    async function openTicket(ticketId) {
+      activeTicket = allTickets.find((row) => row.id === ticketId) || tickets.find((row) => row.id === ticketId);
+      if (!activeTicket) return;
+
+      detailPanel.hidden = false;
+      document.getElementById("detailTitle").textContent = activeTicket.title || "Untitled ticket";
+      document.getElementById("detailSubtitle").textContent = `${customerLabel(activeTicket)} - ${activeTicket.status || "Open"}`;
+      document.getElementById("detailMeta").innerHTML = `
+        <div class="meta-row"><span>Description</span><strong>${html(activeTicket.description || "-")}</strong></div>
+        <div class="meta-row"><span>Created</span><strong>${formatDate(activeTicket.created_at)}</strong></div>
+        <div class="meta-row"><span>Created by</span><strong>${html(activeTicket.created_by || "-")}</strong></div>
+        <div class="meta-row"><span>Assigned to</span><strong>${html(activeTicket.assigned_to || "-")}</strong></div>
+      `;
+      detailPriority.value = activeTicket.priority || "Normal";
+      detailStatus.value = activeTicket.status || "Open";
+      setStatus("detailStatusMessage", "");
+      setStatus("commentStatus", "");
+      renderComments(await getTicketComments(ticketId));
+      detailPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    async function refreshTickets() {
+      allTickets = await getTickets();
+      renderTicketView();
+    }
+
+    [searchInput, sortSelect, statusFilter, priorityFilter].forEach((input) => {
+      input.addEventListener("input", renderTicketView);
+      input.addEventListener("change", renderTicketView);
+    });
+
+    document.getElementById("newTicketToggle").addEventListener("click", () => {
+      form.hidden = false;
+      document.getElementById("ticketTitle").focus();
+    });
+
+    document.getElementById("cancelTicketCreate").addEventListener("click", () => {
+      form.hidden = true;
+      form.reset();
+      formStatus.textContent = "";
+    });
+
+    document.getElementById("closeDetail").addEventListener("click", () => {
+      detailPanel.hidden = true;
+      activeTicket = null;
+    });
+
+    body.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-open-ticket]");
+      if (button) openTicket(button.dataset.openTicket);
+    });
+
+    body.addEventListener("change", async (event) => {
+      const priorityInput = event.target.closest("[data-ticket-priority]");
+      const statusInput = event.target.closest("[data-ticket-status]");
+      const id = priorityInput?.dataset.ticketPriority || statusInput?.dataset.ticketStatus;
+      if (!id) return;
+
+      event.target.disabled = true;
+      try {
+        const updated = await updateTicket(id, priorityInput ? { priority: priorityInput.value } : { status: statusInput.value });
+        allTickets = allTickets.map((row) => row.id === id ? updated : row);
+        renderTicketView();
+      } catch (error) {
+        console.error("Ticket update failed:", error);
+        window.alert(error.message || "Could not update ticket.");
+      } finally {
+        event.target.disabled = false;
+      }
+    });
+
+    [detailPriority, detailStatus].forEach((input) => {
+      input.addEventListener("change", async () => {
+        if (!activeTicket) return;
+        setStatus("detailStatusMessage", "Saving...");
+        try {
+          await updateTicket(activeTicket.id, {
+            priority: detailPriority.value,
+            status: detailStatus.value,
+          });
+          await refreshTickets();
+          activeTicket = allTickets.find((row) => row.id === activeTicket.id);
+          setStatus("detailStatusMessage", "Ticket updated.", "success");
+        } catch (error) {
+          setStatus("detailStatusMessage", error.message || "Could not update ticket.", "error");
+        }
+      });
+    });
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      formStatus.textContent = "Creating ticket...";
+      formStatus.className = "form-status";
+
+      try {
+        const fields = form.elements;
+        const ticket = await createTicket({
+          title: fields.title.value.trim(),
+          description: fields.description.value.trim() || null,
+          customer_id: fields.customer_id.value || null,
+          priority: fields.priority.value,
+          status: fields.status.value,
+          assigned_to: fields.assigned_to.value.trim() || null,
+          created_by: admin.session?.user?.email || null,
+        });
+        form.reset();
+        form.hidden = true;
+        await refreshTickets();
+        await openTicket(ticket.id);
+      } catch (error) {
+        formStatus.textContent = error.message || "Could not create ticket.";
+        formStatus.className = "form-status error";
+        console.error("Ticket create failed:", error);
+      }
+    });
+
+    document.getElementById("commentForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!activeTicket) return;
+      const comment = event.currentTarget.elements.comment.value.trim();
+      if (!comment) return;
+      setStatus("commentStatus", "Saving comment...");
+      try {
+        await addTicketComment(activeTicket.id, comment, admin.session?.user?.email);
+        event.currentTarget.reset();
+        renderComments(await getTicketComments(activeTicket.id));
+        setStatus("commentStatus", "Comment saved.", "success");
+      } catch (error) {
+        console.error("Ticket comment create failed:", error);
+        setStatus("commentStatus", error.message || "Could not save comment.", "error");
+      }
+    });
+
+    if (!admin.redirecting && admin.configError) {
+      setTableState(body, admin.configError, true, 7);
+      count.textContent = "Unavailable";
+    } else if (!admin.redirecting) {
+      try {
+        try {
+          const customers = await getCustomers();
+          customerSelect.innerHTML = '<option value="">No linked customer</option>' + customers.map((row) => (
+            `<option value="${html(row.id)}">${html(row.business_name || row.name || row.email || "Unnamed customer")}</option>`
+          )).join("");
+        } catch (error) {
+          customerSelect.innerHTML = '<option value="">Customer list unavailable</option>';
+        }
+
+        await refreshTickets();
+      } catch (error) {
+        console.error("Supabase tickets page load failed:", error);
+        setTableState(body, `${error.message || "Could not load tickets."} Run supabase-launch-schema.sql in Supabase before using tickets.`, true, 7);
+        count.textContent = "Setup needed";
+      }
+    }
   </script>
 </body>
 </html>
