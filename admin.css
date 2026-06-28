@@ -112,8 +112,9 @@ tbody tr[data-href] { cursor: pointer; }
 .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 18px; }
 .empty-state { padding: 28px 21px; color: var(--salt-dim); font-size: .92rem; line-height: 1.55; }
 .ticket-controls { display: grid; grid-template-columns: minmax(220px, 1.35fr) repeat(3, minmax(170px, .7fr)); gap: 14px; padding: 16px 21px; border-bottom: 1px solid var(--line); background: rgba(11,15,13,.18); }
+.subscription-controls { display: grid; grid-template-columns: repeat(2, minmax(190px, 240px)); gap: 14px; padding: 16px 21px; border-bottom: 1px solid var(--line); background: rgba(11,15,13,.18); }
 .ticket-search { align-self: end; width: 100%; }
-.ticket-control-field { margin: 0; }
+.ticket-control-field, .subscription-control-field { margin: 0; }
 .ticket-cell-stack { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
 .priority-badge { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 5px 8px; font-family: var(--mono); font-size: .61rem; font-weight: 700; letter-spacing: .04em; line-height: 1; white-space: nowrap; }
 .priority-badge::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
@@ -176,14 +177,16 @@ tbody tr[data-href] { cursor: pointer; }
   .top-actions, .toolbar { width: 100%; flex-wrap: wrap; }
   .search { width: 100%; }
   .ticket-controls { grid-template-columns: 1fr; padding: 16px 17px; }
+  .subscription-controls { grid-template-columns: 1fr; padding: 16px 17px; }
   .ticket-table-scroll { overflow-x: visible; }
-  .ticket-table { min-width: 0; display: block; }
-  .ticket-table thead { display: none; }
-  .ticket-table tbody { display: grid; gap: 12px; padding: 14px 17px; }
-  .ticket-table tr { display: grid; gap: 10px; border: 1px solid rgba(242,238,228,.1); border-radius: 12px; padding: 13px; background: rgba(11,15,13,.32); }
-  .ticket-table tr:hover { background: rgba(11,15,13,.42); }
-  .ticket-table td { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; width: 100%; padding: 0; border-top: 0; white-space: normal; overflow-wrap: anywhere; }
-  .ticket-table td::before { content: attr(data-label); flex: none; color: var(--salt-dim); font-family: var(--mono); font-size: .62rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+  .subscription-table-scroll { overflow-x: visible; }
+  .ticket-table, .subscription-table { min-width: 0; display: block; }
+  .ticket-table thead, .subscription-table thead { display: none; }
+  .ticket-table tbody, .subscription-table tbody { display: grid; gap: 12px; padding: 14px 17px; }
+  .ticket-table tr, .subscription-table tr { display: grid; gap: 10px; border: 1px solid rgba(242,238,228,.1); border-radius: 12px; padding: 13px; background: rgba(11,15,13,.32); }
+  .ticket-table tr:hover, .subscription-table tr:hover { background: rgba(11,15,13,.42); }
+  .ticket-table td, .subscription-table td { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; width: 100%; padding: 0; border-top: 0; white-space: normal; overflow-wrap: anywhere; }
+  .ticket-table td::before, .subscription-table td::before { content: attr(data-label); flex: none; color: var(--salt-dim); font-family: var(--mono); font-size: .62rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
   .ticket-table td[data-label="Action"] { justify-content: flex-end; }
   .ticket-table td[data-label="Action"]::before { display: none; }
   .ticket-table td select { max-width: 170px; min-width: 138px; }

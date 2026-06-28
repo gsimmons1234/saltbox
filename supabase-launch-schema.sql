@@ -175,6 +175,43 @@ create trigger set_subscriptions_updated_at
 before update on public.subscriptions
 for each row execute function public.set_updated_at();
 
+create table if not exists public.package_payment_plans (
+  id uuid primary key default gen_random_uuid(),
+  customer_id uuid references public.customers(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  status text not null default 'Draft',
+  package_name text,
+  total_package_price numeric,
+  down_payment numeric default 0,
+  amount_financed numeric,
+  number_of_payments integer,
+  payment_interval text default 'month',
+  monthly_payment_amount numeric,
+  start_date date,
+  next_due_date date,
+  notes text,
+  stripe_subscription_id text,
+  stripe_customer_id text
+);
+
+drop trigger if exists set_package_payment_plans_updated_at on public.package_payment_plans;
+create trigger set_package_payment_plans_updated_at
+before update on public.package_payment_plans
+for each row execute function public.set_updated_at();
+
+create table if not exists public.package_payment_plan_payments (
+  id uuid primary key default gen_random_uuid(),
+  payment_plan_id uuid references public.package_payment_plans(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  due_date date,
+  amount_due numeric,
+  amount_paid numeric default 0,
+  paid_at date,
+  status text not null default 'Due',
+  notes text
+);
+
 create index if not exists customers_email_idx on public.customers(email);
 create index if not exists customers_status_idx on public.customers(status);
 create index if not exists customer_notes_customer_id_idx on public.customer_notes(customer_id);
@@ -187,6 +224,11 @@ create index if not exists ticket_comments_ticket_id_idx on public.ticket_commen
 create index if not exists subscriptions_customer_id_idx on public.subscriptions(customer_id);
 create index if not exists subscriptions_status_idx on public.subscriptions(status);
 create unique index if not exists subscriptions_stripe_subscription_id_key on public.subscriptions(stripe_subscription_id);
+create index if not exists package_payment_plans_customer_id_idx on public.package_payment_plans(customer_id);
+create index if not exists package_payment_plans_status_idx on public.package_payment_plans(status);
+create index if not exists package_payment_plan_payments_payment_plan_id_idx on public.package_payment_plan_payments(payment_plan_id);
+create index if not exists package_payment_plan_payments_due_date_idx on public.package_payment_plan_payments(due_date);
+create index if not exists package_payment_plan_payments_status_idx on public.package_payment_plan_payments(status);
 
 alter table public.customers enable row level security;
 alter table public.customer_notes enable row level security;
@@ -195,6 +237,8 @@ alter table public.customer_invoices enable row level security;
 alter table public.tickets enable row level security;
 alter table public.ticket_comments enable row level security;
 alter table public.subscriptions enable row level security;
+alter table public.package_payment_plans enable row level security;
+alter table public.package_payment_plan_payments enable row level security;
 
 -- Remove the earlier broad authenticated policies before adding launch policies.
 drop policy if exists "Authenticated admins can manage customers" on public.customers;
@@ -285,6 +329,22 @@ to authenticated
 using (public.is_admin())
 with check (public.is_admin());
 
+drop policy if exists "Admins can manage package payment plans" on public.package_payment_plans;
+create policy "Admins can manage package payment plans"
+on public.package_payment_plans
+for all
+to authenticated
+using (public.is_admin())
+with check (public.is_admin());
+
+drop policy if exists "Admins can manage package payment plan payments" on public.package_payment_plan_payments;
+create policy "Admins can manage package payment plan payments"
+on public.package_payment_plan_payments
+for all
+to authenticated
+using (public.is_admin())
+with check (public.is_admin());
+
 -- Customer portal read policies. These are intentionally read-only and match on
 -- auth email for the first launch. A later hardening pass should add explicit
 -- customer user IDs instead of relying on email matching.
@@ -304,6 +364,20 @@ using (
   exists (
     select 1 from public.customers
     where customers.id = customer_invoices.customer_id
+    and lower(customers.email) = lower(auth.jwt() ->> 'email')
+  )
+);
+
+drop policy if exists "Customers can read own subscriptions" on public.subscriptions;
+create policy "Customers can read own subscriptions"
+on public.subscriptions
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.customers
+    where customers.id = subscriptions.customer_id
     and lower(customers.email) = lower(auth.jwt() ->> 'email')
   )
 );
@@ -330,6 +404,34 @@ using (
   exists (
     select 1 from public.customers
     where customers.id = customer_files.customer_id
+    and lower(customers.email) = lower(auth.jwt() ->> 'email')
+  )
+);
+
+drop policy if exists "Customers can read own package payment plans" on public.package_payment_plans;
+create policy "Customers can read own package payment plans"
+on public.package_payment_plans
+for select
+to authenticated
+using (
+  exists (
+    select 1 from public.customers
+    where customers.id = package_payment_plans.customer_id
+    and lower(customers.email) = lower(auth.jwt() ->> 'email')
+  )
+);
+
+drop policy if exists "Customers can read own package payment plan payments" on public.package_payment_plan_payments;
+create policy "Customers can read own package payment plan payments"
+on public.package_payment_plan_payments
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.package_payment_plans
+    join public.customers on customers.id = package_payment_plans.customer_id
+    where package_payment_plans.id = package_payment_plan_payments.payment_plan_id
     and lower(customers.email) = lower(auth.jwt() ->> 'email')
   )
 );

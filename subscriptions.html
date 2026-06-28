@@ -30,33 +30,103 @@
 
     <main class="main">
       <header class="topbar">
-        <div><div class="page-kicker">Billing</div><h1>Subscriptions</h1><p class="page-subtitle">Care-plan billing records from Supabase and Stripe webhooks.</p></div>
+        <div><div class="page-kicker">Billing</div><h1>Subscriptions</h1><p class="page-subtitle">Manual subscription records for admin tracking and Stripe testing.</p></div>
         <div class="top-actions">
           <span class="session-email" data-session-email></span>
           <button class="logout-btn" data-logout type="button">Log out</button>
         </div>
       </header>
 
+      <div class="notice">
+        <div><strong>Manual tracking only.</strong> These rows help test customer subscription records before Stripe is live. Stripe billing is not active unless real Stripe IDs and Netlify environment variables are configured.</div>
+      </div>
+
       <article class="panel">
-        <header class="panel-head"><div><h2 class="panel-title">Subscriptions</h2><p class="panel-subtitle" id="subscriptionCount">Loading from Supabase</p></div></header>
-        <div class="table-scroll">
-          <table>
-            <thead><tr><th>Customer</th><th>Plan</th><th>Status</th><th>Amount</th><th>Interval</th><th>Updated</th></tr></thead>
-            <tbody id="subscriptionsBody"><tr class="table-state"><td colspan="6">Loading subscriptions...</td></tr></tbody>
+        <header class="panel-head">
+          <div><h2 class="panel-title">Subscriptions</h2><p class="panel-subtitle" id="subscriptionCount">Loading from Supabase</p></div>
+          <button class="button-link primary" id="addSubscriptionToggle" type="button">Add subscription</button>
+        </header>
+
+        <form class="form-panel" id="subscriptionForm" hidden>
+          <div class="form-grid">
+            <div class="field"><label for="subscriptionCustomer">Customer</label><select id="subscriptionCustomer" name="customer_id" required><option value="">Select customer</option></select></div>
+            <div class="field"><label for="subscriptionPlan">Plan name</label><select id="subscriptionPlan" name="plan_name"><option>Starter Care</option><option>Standard Care</option><option>Growth Care</option><option>Custom</option></select></div>
+            <div class="field" id="customPlanField" hidden><label for="customPlanName">Custom plan name</label><input id="customPlanName" name="custom_plan_name" type="text" placeholder="Optional custom label"></div>
+            <div class="field"><label for="subscriptionAmount">Amount</label><input id="subscriptionAmount" name="amount" type="number" min="0" step="0.01" required></div>
+            <div class="field"><label for="subscriptionInterval">Interval</label><select id="subscriptionInterval" name="interval"><option>month</option><option>year</option></select></div>
+            <div class="field"><label for="subscriptionStatus">Status</label><select id="subscriptionStatus" name="status"><option>Draft</option><option>Active</option><option>Past due</option><option>Canceled</option></select></div>
+            <div class="field"><label for="stripeCustomerId">Stripe customer ID</label><input id="stripeCustomerId" name="stripe_customer_id" type="text" placeholder="Optional"></div>
+            <div class="field"><label for="stripeSubscriptionId">Stripe subscription ID</label><input id="stripeSubscriptionId" name="stripe_subscription_id" type="text" placeholder="Optional"></div>
+          </div>
+          <div class="button-row" style="margin-top:16px;"><button class="button-link primary" type="submit">Save subscription</button><button class="button-link" id="cancelSubscriptionCreate" type="button">Cancel</button></div>
+          <p class="form-status" id="subscriptionFormStatus" role="status" aria-live="polite"></p>
+        </form>
+
+        <div class="subscription-controls" aria-label="Subscription filters">
+          <div class="field subscription-control-field"><label for="subscriptionStatusFilter">Status</label><select id="subscriptionStatusFilter"><option value="">All statuses</option><option>Draft</option><option>Active</option><option>Past due</option><option>Canceled</option></select></div>
+          <div class="field subscription-control-field"><label for="subscriptionSort">Sort subscriptions by</label><select id="subscriptionSort"><option value="created-desc" selected>Newest first</option><option value="customer">Customer name</option><option value="amount">Amount</option></select></div>
+        </div>
+
+        <div class="table-scroll subscription-table-scroll">
+          <table class="subscription-table">
+            <thead><tr><th>Customer</th><th>Email</th><th>Plan</th><th>Status</th><th>Amount</th><th>Interval</th><th>Created</th><th>Stripe subscription ID</th></tr></thead>
+            <tbody id="subscriptionsBody"><tr class="table-state"><td colspan="8">Loading subscriptions...</td></tr></tbody>
           </table>
         </div>
         <p class="empty" id="subscriptionsEmpty">No subscriptions yet.</p>
+      </article>
+
+      <article class="panel" style="margin-top:18px;">
+        <header class="panel-head"><div><h2 class="panel-title">Package Payment Plans</h2><p class="panel-subtitle" id="paymentPlanCount">Loading from Supabase</p></div></header>
+
+        <div class="subscription-controls" aria-label="Package payment plan filters">
+          <div class="field subscription-control-field"><label for="paymentPlanStatusFilter">Status</label><select id="paymentPlanStatusFilter"><option value="">All statuses</option><option>Draft</option><option>Active</option><option>Paid</option><option>Past due</option><option>Canceled</option></select></div>
+          <div class="field subscription-control-field"><label for="paymentPlanSort">Sort payment plans by</label><select id="paymentPlanSort"><option value="next-due" selected>Next due date</option><option value="customer">Customer name</option><option value="monthly-payment">Monthly payment amount</option><option value="created-desc">Newest first</option></select></div>
+        </div>
+
+        <div class="table-scroll subscription-table-scroll">
+          <table class="subscription-table">
+            <thead><tr><th>Customer</th><th>Email</th><th>Package</th><th>Total</th><th>Down</th><th>Monthly</th><th>Payments</th><th>Next due</th><th>Status</th></tr></thead>
+            <tbody id="paymentPlansBody"><tr class="table-state"><td colspan="9">Loading package payment plans...</td></tr></tbody>
+          </table>
+        </div>
+        <p class="empty" id="paymentPlansEmpty">No package payment plans yet.</p>
       </article>
     </main>
   </div>
 
   <script type="module">
-    import { getSubscriptions, html, initAdminPage, setTableState, statusClass, formatDate } from "./admin.js";
+    import { createSubscription, getCustomers, getPackagePaymentPlans, getSubscriptions, html, initAdminPage, setTableState, statusClass, formatDate } from "./admin.js";
 
     const admin = await initAdminPage("subscriptions");
     const body = document.getElementById("subscriptionsBody");
     const empty = document.getElementById("subscriptionsEmpty");
     const count = document.getElementById("subscriptionCount");
+    const paymentPlansBody = document.getElementById("paymentPlansBody");
+    const paymentPlansEmpty = document.getElementById("paymentPlansEmpty");
+    const paymentPlanCount = document.getElementById("paymentPlanCount");
+    const form = document.getElementById("subscriptionForm");
+    const formStatus = document.getElementById("subscriptionFormStatus");
+    const customerSelect = document.getElementById("subscriptionCustomer");
+    const planSelect = document.getElementById("subscriptionPlan");
+    const amountInput = document.getElementById("subscriptionAmount");
+    const customPlanField = document.getElementById("customPlanField");
+    const statusFilter = document.getElementById("subscriptionStatusFilter");
+    const sortSelect = document.getElementById("subscriptionSort");
+    const paymentPlanStatusFilter = document.getElementById("paymentPlanStatusFilter");
+    const paymentPlanSort = document.getElementById("paymentPlanSort");
+    const carePlanPrices = {
+      "Starter Care": "75",
+      "Standard Care": "150",
+      "Growth Care": "300",
+    };
+    let subscriptions = [];
+    let paymentPlans = [];
+
+    function setFormStatus(message, state = "") {
+      formStatus.textContent = message;
+      formStatus.className = `form-status ${state}`.trim();
+    }
 
     function customerLabel(row) {
       const customer = row.customer;
@@ -64,41 +134,250 @@
       return customer.business_name || customer.name || customer.email || "-";
     }
 
-    function amount(row) {
+    function customerEmail(row) {
+      return row.customer?.email || "-";
+    }
+
+    function customerSortLabel(row) {
+      const customer = row.customer;
+      return customer?.business_name || customer?.name || customer?.email || "";
+    }
+
+    function amountLabel(row) {
       const number = Number(row.amount || 0);
       return row.amount === null || row.amount === undefined ? "-" : `$${number.toFixed(2)}`;
     }
 
+    function amountValue(value) {
+      const number = Number(typeof value === "object" ? value.amount : value);
+      return Number.isFinite(number) ? number : 0;
+    }
+
+    function dateTime(value) {
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+    }
+
+    function dueDateTime(value) {
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? Number.POSITIVE_INFINITY : date.getTime();
+    }
+
+    function statusBadgeClass(status) {
+      if (status === "Past due") return "progress";
+      if (status === "Canceled") return "closed";
+      if (status === "Paid") return "active";
+      return statusClass(status);
+    }
+
+    function applyCarePlanPrice() {
+      customPlanField.hidden = planSelect.value !== "Custom";
+      if (carePlanPrices[planSelect.value]) amountInput.value = carePlanPrices[planSelect.value];
+      if (planSelect.value === "Custom") amountInput.value = "";
+    }
+
+    function visibleSubscriptions() {
+      return subscriptions
+        .filter((row) => !statusFilter.value || (row.status || "Draft") === statusFilter.value)
+        .sort((a, b) => {
+          if (sortSelect.value === "customer") {
+            return customerSortLabel(a).toLowerCase().localeCompare(customerSortLabel(b).toLowerCase()) ||
+              dateTime(b.created_at) - dateTime(a.created_at);
+          }
+
+          if (sortSelect.value === "amount") {
+            return amountValue(b.amount) - amountValue(a.amount) ||
+              dateTime(b.created_at) - dateTime(a.created_at);
+          }
+
+          return dateTime(b.created_at) - dateTime(a.created_at);
+        });
+    }
+
+    function visiblePaymentPlans() {
+      return paymentPlans
+        .filter((row) => !paymentPlanStatusFilter.value || (row.status || "Draft") === paymentPlanStatusFilter.value)
+        .sort((a, b) => {
+          if (paymentPlanSort.value === "customer") {
+            return customerSortLabel(a).toLowerCase().localeCompare(customerSortLabel(b).toLowerCase()) ||
+              dateTime(b.created_at) - dateTime(a.created_at);
+          }
+
+          if (paymentPlanSort.value === "monthly-payment") {
+            return amountValue(b.monthly_payment_amount) - amountValue(a.monthly_payment_amount) ||
+              dateTime(b.created_at) - dateTime(a.created_at);
+          }
+
+          if (paymentPlanSort.value === "created-desc") {
+            return dateTime(b.created_at) - dateTime(a.created_at);
+          }
+
+          return dueDateTime(a.next_due_date) - dueDateTime(b.next_due_date) ||
+            dateTime(b.created_at) - dateTime(a.created_at);
+        });
+    }
+
+    function renderSubscriptions() {
+      const rows = visibleSubscriptions();
+      const filtered = rows.length !== subscriptions.length || statusFilter.value;
+      count.textContent = filtered ? `${rows.length} of ${subscriptions.length} subscription${subscriptions.length === 1 ? "" : "s"}` : `${subscriptions.length} subscription${subscriptions.length === 1 ? "" : "s"}`;
+
+      if (!rows.length) {
+        body.innerHTML = "";
+        empty.textContent = subscriptions.length ? "No subscriptions match the current filters." : "No subscriptions yet.";
+        empty.classList.add("visible");
+        return;
+      }
+
+      empty.textContent = "No subscriptions yet.";
+      empty.classList.remove("visible");
+      body.innerHTML = rows.map((row) => {
+        const status = row.status || "Draft";
+        return `
+          <tr>
+            <td class="entity" data-label="Customer">${html(customerLabel(row))}</td>
+            <td data-label="Email">${html(customerEmail(row))}</td>
+            <td data-label="Plan">${html(row.plan_name || "Care plan")}</td>
+            <td data-label="Status"><span class="status ${statusBadgeClass(status)}">${html(status)}</span></td>
+            <td data-label="Amount">${amountLabel(row)}</td>
+            <td data-label="Interval">${html(row.interval || "month")}</td>
+            <td class="muted" data-label="Created">${formatDate(row.created_at)}</td>
+            <td data-label="Stripe subscription ID">${html(row.stripe_subscription_id || "-")}</td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    async function refreshSubscriptions() {
+      subscriptions = await getSubscriptions();
+      renderSubscriptions();
+    }
+
+    function renderPaymentPlans() {
+      const rows = visiblePaymentPlans();
+      const filtered = rows.length !== paymentPlans.length || paymentPlanStatusFilter.value;
+      paymentPlanCount.textContent = filtered ? `${rows.length} of ${paymentPlans.length} payment plan${paymentPlans.length === 1 ? "" : "s"}` : `${paymentPlans.length} payment plan${paymentPlans.length === 1 ? "" : "s"}`;
+
+      if (!rows.length) {
+        paymentPlansBody.innerHTML = "";
+        paymentPlansEmpty.textContent = paymentPlans.length ? "No payment plans match the current filters." : "No package payment plans yet.";
+        paymentPlansEmpty.classList.add("visible");
+        return;
+      }
+
+      paymentPlansEmpty.textContent = "No package payment plans yet.";
+      paymentPlansEmpty.classList.remove("visible");
+      paymentPlansBody.innerHTML = rows.map((row) => {
+        const status = row.status || "Draft";
+        return `
+          <tr>
+            <td class="entity" data-label="Customer">${html(customerLabel(row))}</td>
+            <td data-label="Email">${html(customerEmail(row))}</td>
+            <td data-label="Package">${html(row.package_name || "-")}</td>
+            <td data-label="Total">${amountLabel({ amount: row.total_package_price })}</td>
+            <td data-label="Down">${amountLabel({ amount: row.down_payment })}</td>
+            <td data-label="Monthly">${amountLabel({ amount: row.monthly_payment_amount })}</td>
+            <td data-label="Payments">${html(row.number_of_payments || "-")}</td>
+            <td class="muted" data-label="Next due">${row.next_due_date ? html(row.next_due_date) : "-"}</td>
+            <td data-label="Status"><span class="status ${statusBadgeClass(status)}">${html(status)}</span></td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    async function refreshPaymentPlans() {
+      paymentPlans = await getPackagePaymentPlans();
+      renderPaymentPlans();
+    }
+
+    async function loadCustomers() {
+      const customers = await getCustomers();
+      customerSelect.innerHTML = '<option value="">Select customer</option>' + customers.map((row) => (
+        `<option value="${html(row.id)}">${html(row.business_name || row.name || row.email || "Unnamed customer")}${row.email ? ` - ${html(row.email)}` : ""}</option>`
+      )).join("");
+    }
+
+    document.getElementById("addSubscriptionToggle").addEventListener("click", () => {
+      form.hidden = false;
+      applyCarePlanPrice();
+      customerSelect.focus();
+    });
+
+    document.getElementById("cancelSubscriptionCreate").addEventListener("click", () => {
+      form.hidden = true;
+      form.reset();
+      customPlanField.hidden = true;
+      setFormStatus("");
+    });
+
+    planSelect.addEventListener("change", () => {
+      applyCarePlanPrice();
+    });
+
+    [statusFilter, sortSelect].forEach((input) => {
+      input.addEventListener("change", renderSubscriptions);
+    });
+
+    [paymentPlanStatusFilter, paymentPlanSort].forEach((input) => {
+      input.addEventListener("change", renderPaymentPlans);
+    });
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      setFormStatus("Saving subscription...");
+
+      const fields = form.elements;
+      const planName = fields.plan_name.value === "Custom"
+        ? (fields.custom_plan_name.value.trim() || "Custom")
+        : fields.plan_name.value;
+
+      try {
+        await createSubscription({
+          customer_id: fields.customer_id.value,
+          plan_name: planName,
+          amount: Number(fields.amount.value),
+          interval: fields.interval.value,
+          status: fields.status.value,
+          stripe_customer_id: fields.stripe_customer_id.value.trim() || null,
+          stripe_subscription_id: fields.stripe_subscription_id.value.trim() || null,
+        });
+
+        form.reset();
+        form.hidden = true;
+        customPlanField.hidden = true;
+        setFormStatus("");
+        await refreshSubscriptions();
+      } catch (error) {
+        console.error("Supabase subscription insert failed:", error);
+        setFormStatus(error.message || "Could not save subscription.", "error");
+      }
+    });
+
     if (!admin.redirecting && admin.configError) {
-      setTableState(body, admin.configError, true, 6);
+      setTableState(body, admin.configError, true, 8);
       count.textContent = "Unavailable";
     } else if (!admin.redirecting) {
       try {
-        const rows = await getSubscriptions();
-        count.textContent = `${rows.length} subscription${rows.length === 1 ? "" : "s"}`;
-
-        if (!rows.length) {
-          body.innerHTML = "";
-          empty.classList.add("visible");
-        } else {
-          empty.classList.remove("visible");
-          body.innerHTML = rows.map((row) => {
-            const status = row.status || "Draft";
-            return `
-              <tr>
-                <td class="entity">${html(customerLabel(row))}</td>
-                <td>${html(row.plan_name || "Care plan")}</td>
-                <td><span class="status ${statusClass(status)}">${html(status)}</span></td>
-                <td>${amount(row)}</td>
-                <td>${html(row.interval || "month")}</td>
-                <td class="muted">${formatDate(row.updated_at || row.created_at)}</td>
-              </tr>
-            `;
-          }).join("");
-        }
+        await loadCustomers();
       } catch (error) {
-        setTableState(body, `${error.message || "Could not load subscriptions."} Run supabase-launch-schema.sql in Supabase before using subscriptions.`, true, 6);
-        count.textContent = "Setup needed";
+        console.error("Supabase customers load failed:", error);
+        customerSelect.innerHTML = '<option value="">Customer list unavailable</option>';
+      }
+
+      try {
+        await refreshSubscriptions();
+      } catch (error) {
+        console.error("Supabase subscriptions page load failed:", error);
+        setTableState(body, error.message || "Could not load subscriptions.", true, 8);
+        count.textContent = "Unavailable";
+      }
+
+      try {
+        await refreshPaymentPlans();
+      } catch (error) {
+        console.error("Supabase package payment plans page load failed:", error);
+        setTableState(paymentPlansBody, error.message || "Could not load package payment plans.", true, 9);
+        paymentPlanCount.textContent = "Unavailable";
       }
     }
   </script>

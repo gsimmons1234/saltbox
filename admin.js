@@ -71,6 +71,39 @@ export const subscriptionColumns = [
   "customer:customers(name, business_name, email)",
 ].join(", ");
 
+export const packagePaymentPlanColumns = [
+  "id",
+  "customer_id",
+  "created_at",
+  "updated_at",
+  "status",
+  "package_name",
+  "total_package_price",
+  "down_payment",
+  "amount_financed",
+  "number_of_payments",
+  "payment_interval",
+  "monthly_payment_amount",
+  "start_date",
+  "next_due_date",
+  "notes",
+  "stripe_subscription_id",
+  "stripe_customer_id",
+  "customer:customers(name, business_name, email)",
+].join(", ");
+
+export const packagePaymentColumns = [
+  "id",
+  "payment_plan_id",
+  "created_at",
+  "due_date",
+  "amount_due",
+  "amount_paid",
+  "paid_at",
+  "status",
+  "notes",
+].join(", ");
+
 export function html(value) {
   return String(value ?? "").replace(/[&<>"']/g, (char) => ({
     "&": "&amp;",
@@ -438,6 +471,101 @@ export async function getSubscriptions() {
   }
 
   return data || [];
+}
+
+export async function createSubscription(payload) {
+  const { data, error } = await supabase
+    .from("subscriptions")
+    .insert(payload)
+    .select(subscriptionColumns)
+    .single();
+
+  if (error) {
+    console.error("Supabase subscriptions insert failed:", error);
+    throw error;
+  }
+
+  return data;
+}
+
+export async function getPackagePaymentPlans({ customerId } = {}) {
+  let query = supabase
+    .from("package_payment_plans")
+    .select(packagePaymentPlanColumns)
+    .order("created_at", { ascending: false });
+
+  if (customerId) query = query.eq("customer_id", customerId);
+
+  const { data, error } = await query;
+  if (error) {
+    console.error("Supabase package_payment_plans select failed:", error);
+    throw error;
+  }
+
+  return data || [];
+}
+
+export async function upsertPackagePaymentPlan(payload) {
+  const { id, ...values } = payload;
+  const query = payload.id
+    ? supabase.from("package_payment_plans").update({ ...values, updated_at: new Date().toISOString() }).eq("id", id)
+    : supabase.from("package_payment_plans").insert(values);
+
+  const { data, error } = await query
+    .select(packagePaymentPlanColumns)
+    .single();
+
+  if (error) {
+    console.error("Supabase package_payment_plans save failed:", error);
+    throw error;
+  }
+
+  return data;
+}
+
+export async function getPackagePaymentPlanPayments(paymentPlanId) {
+  const { data, error } = await supabase
+    .from("package_payment_plan_payments")
+    .select(packagePaymentColumns)
+    .eq("payment_plan_id", paymentPlanId)
+    .order("due_date", { ascending: true });
+
+  if (error) {
+    console.error("Supabase package_payment_plan_payments select failed:", error);
+    throw error;
+  }
+
+  return data || [];
+}
+
+export async function createPackagePaymentSchedule(rows) {
+  const { data, error } = await supabase
+    .from("package_payment_plan_payments")
+    .insert(rows)
+    .select(packagePaymentColumns);
+
+  if (error) {
+    console.error("Supabase package_payment_plan_payments insert failed:", error);
+    throw error;
+  }
+
+  return data || [];
+}
+
+export async function updatePackagePaymentPlanPayment(id, payload) {
+  const { data, error } = await supabase
+    .from("package_payment_plan_payments")
+    .update(payload)
+    .eq("id", id)
+    .select(packagePaymentColumns)
+    .single();
+
+  if (error) {
+    console.error("Supabase package_payment_plan_payments update failed:", error);
+    throw error;
+  }
+
+  return data;
 }
 
 export async function getTicket(id) {

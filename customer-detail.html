@@ -93,6 +93,41 @@
           </form>
         </article>
 
+        <article class="panel wide">
+          <header class="panel-head">
+            <div><h2 class="panel-title">Package Payment Plan</h2><p class="panel-subtitle">Installment tracking for the one-time website package price</p></div>
+            <button class="button-link primary" id="addPaymentPlanToggle" type="button">Add payment plan</button>
+          </header>
+          <div class="panel-body">
+            <p class="page-subtitle">Manual tracking only. Stripe billing is not live unless Stripe IDs and Netlify environment variables are configured.</p>
+            <p class="empty visible" id="paymentPlanEmpty">No package payment plan yet.</p>
+            <form id="paymentPlanForm" style="margin-top:16px;" hidden>
+              <div class="form-grid">
+                <div class="field"><label for="paymentPackageName">Package name</label><input id="paymentPackageName" name="package_name" type="text"></div>
+                <div class="field"><label for="paymentPlanStatus">Status</label><select id="paymentPlanStatus" name="status"><option>Draft</option><option>Active</option><option>Paid</option><option>Past due</option><option>Canceled</option></select></div>
+                <div class="field"><label for="paymentTotalPackagePrice">Total package price</label><input id="paymentTotalPackagePrice" name="total_package_price" type="number" min="0" step="0.01"></div>
+                <div class="field"><label for="paymentDownPayment">Down payment</label><input id="paymentDownPayment" name="down_payment" type="number" min="0" step="0.01"></div>
+                <div class="field"><label for="paymentAmountFinanced">Amount financed</label><input id="paymentAmountFinanced" name="amount_financed" type="number" min="0" step="0.01"></div>
+                <div class="field"><label for="paymentNumberOfPayments">Number of payments</label><input id="paymentNumberOfPayments" name="number_of_payments" type="number" min="1" step="1"></div>
+                <div class="field"><label for="paymentInterval">Payment interval</label><select id="paymentInterval" name="payment_interval"><option>month</option></select></div>
+                <div class="field"><label for="paymentMonthlyAmount">Monthly payment amount</label><input id="paymentMonthlyAmount" name="monthly_payment_amount" type="number" min="0" step="0.01"></div>
+                <div class="field"><label for="paymentStartDate">Start date</label><input id="paymentStartDate" name="start_date" type="date"></div>
+                <div class="field"><label for="paymentNextDueDate">Next due date</label><input id="paymentNextDueDate" name="next_due_date" type="date"></div>
+                <div class="field full"><label for="paymentPlanNotes">Notes</label><textarea id="paymentPlanNotes" name="notes"></textarea></div>
+              </div>
+              <div class="button-row" style="margin-top:16px;"><button class="button-link primary" type="submit">Save payment plan</button><button class="button-link" id="generateSchedule" type="button">Generate payment schedule</button></div>
+              <p class="form-status" id="paymentPlanStatusMessage" role="status" aria-live="polite"></p>
+            </form>
+            <div class="table-scroll subscription-table-scroll" style="margin-top:18px;">
+              <table class="subscription-table">
+                <thead><tr><th>Due date</th><th>Amount due</th><th>Amount paid</th><th>Status</th><th>Paid date</th><th>Notes</th><th>Actions</th></tr></thead>
+                <tbody id="paymentScheduleBody"><tr class="table-state"><td colspan="7">No payment plan saved yet.</td></tr></tbody>
+              </table>
+            </div>
+            <p class="empty" id="paymentScheduleEmpty">No payment schedule yet.</p>
+          </div>
+        </article>
+
         <article class="panel">
           <header class="panel-head"><div><h2 class="panel-title">Notes</h2><p class="panel-subtitle">Internal phone-call and project notes</p></div></header>
           <div class="panel-body">
@@ -142,6 +177,7 @@
   <script type="module">
     import {
       addCustomerNote,
+      createPackagePaymentSchedule,
       createCustomerInvoice,
       createTicket,
       formatDate,
@@ -149,9 +185,13 @@
       getCustomerFiles,
       getCustomerInvoices,
       getCustomerNotes,
+      getPackagePaymentPlanPayments,
+      getPackagePaymentPlans,
       html,
       initAdminPage,
+      updatePackagePaymentPlanPayment,
       updateCustomer,
+      upsertPackagePaymentPlan,
       uploadCustomerFile
     } from "./admin.js";
 
@@ -159,6 +199,8 @@
     const params = new URLSearchParams(window.location.search);
     const customerId = params.get("id");
     let customer = null;
+    let paymentPlan = null;
+    let paymentSchedule = [];
 
     function setStatus(id, message, state = "") {
       const node = document.getElementById(id);
@@ -190,6 +232,21 @@
 
     function numberOrNull(value) {
       return value === "" ? null : Number(value);
+    }
+
+    function integerOrNull(value) {
+      return value === "" ? null : Number.parseInt(value, 10);
+    }
+
+    function moneyLabel(value) {
+      return value === null || value === undefined ? "-" : `$${Number(value || 0).toFixed(2)}`;
+    }
+
+    function isoDateOffset(startDate, monthsToAdd) {
+      const date = new Date(`${startDate}T00:00:00`);
+      if (Number.isNaN(date.getTime())) return null;
+      date.setMonth(date.getMonth() + monthsToAdd);
+      return date.toISOString().slice(0, 10);
     }
 
     function renderNotes(rows) {
@@ -231,6 +288,79 @@
       `).join("");
     }
 
+    function calculatePaymentPlanAmounts() {
+      const total = Number(document.getElementById("paymentTotalPackagePrice").value || 0);
+      const down = Number(document.getElementById("paymentDownPayment").value || 0);
+      const payments = Number.parseInt(document.getElementById("paymentNumberOfPayments").value, 10);
+      const amountFinancedInput = document.getElementById("paymentAmountFinanced");
+      const calculatedFinanced = Math.max(total - down, 0);
+      if (!amountFinancedInput.dataset.edited) {
+        amountFinancedInput.value = calculatedFinanced ? calculatedFinanced.toFixed(2) : "";
+      }
+      const amountFinanced = Number(amountFinancedInput.value || calculatedFinanced);
+      const monthly = payments > 0 ? amountFinanced / payments : null;
+
+      if (monthly !== null && !document.getElementById("paymentMonthlyAmount").dataset.edited) {
+        document.getElementById("paymentMonthlyAmount").value = monthly ? monthly.toFixed(2) : "";
+      }
+    }
+
+    function showPaymentPlanForm(show) {
+      document.getElementById("paymentPlanForm").hidden = !show;
+      document.getElementById("paymentPlanEmpty").classList.toggle("visible", !show && !paymentPlan);
+      document.getElementById("addPaymentPlanToggle").hidden = show || Boolean(paymentPlan);
+    }
+
+    function fillPaymentPlan(row) {
+      paymentPlan = row || null;
+      document.getElementById("paymentPackageName").value = row?.package_name || customer?.selected_package || "";
+      document.getElementById("paymentPlanStatus").value = row?.status || "Draft";
+      document.getElementById("paymentTotalPackagePrice").value = moneyValue(row?.total_package_price ?? customer?.package_price);
+      document.getElementById("paymentDownPayment").value = moneyValue(row?.down_payment);
+      document.getElementById("paymentAmountFinanced").value = moneyValue(row?.amount_financed);
+      document.getElementById("paymentNumberOfPayments").value = row?.number_of_payments || "";
+      document.getElementById("paymentInterval").value = row?.payment_interval || "month";
+      document.getElementById("paymentMonthlyAmount").value = moneyValue(row?.monthly_payment_amount);
+      document.getElementById("paymentMonthlyAmount").dataset.edited = row?.monthly_payment_amount ? "true" : "";
+      document.getElementById("paymentStartDate").value = row?.start_date || "";
+      document.getElementById("paymentNextDueDate").value = row?.next_due_date || "";
+      document.getElementById("paymentPlanNotes").value = row?.notes || "";
+      document.getElementById("paymentAmountFinanced").dataset.edited = row?.amount_financed ? "true" : "";
+      calculatePaymentPlanAmounts();
+      showPaymentPlanForm(Boolean(row));
+    }
+
+    function renderPaymentSchedule(rows) {
+      paymentSchedule = rows;
+      const body = document.getElementById("paymentScheduleBody");
+      const empty = document.getElementById("paymentScheduleEmpty");
+
+      if (!paymentPlan) {
+        body.innerHTML = '<tr class="table-state"><td colspan="7">No payment plan saved yet.</td></tr>';
+        empty.classList.remove("visible");
+        return;
+      }
+
+      if (!rows.length) {
+        body.innerHTML = "";
+        empty.classList.add("visible");
+        return;
+      }
+
+      empty.classList.remove("visible");
+      body.innerHTML = rows.map((row) => `
+        <tr>
+          <td data-label="Due date">${html(row.due_date || "-")}</td>
+          <td data-label="Amount due">${moneyLabel(row.amount_due)}</td>
+          <td data-label="Amount paid">${moneyLabel(row.amount_paid)}</td>
+          <td data-label="Status"><span class="status ${row.status === "Paid" ? "active" : row.status === "Past due" ? "progress" : "new"}">${html(row.status || "Due")}</span></td>
+          <td data-label="Paid date">${html(row.paid_at || "-")}</td>
+          <td data-label="Notes">${html(row.notes || "-")}</td>
+          <td data-label="Actions"><div class="button-row"><button class="button-link" type="button" data-payment-paid="${html(row.id)}">Mark paid</button><button class="button-link" type="button" data-payment-past-due="${html(row.id)}">Past due</button><button class="button-link" type="button" data-payment-edit="${html(row.id)}">Edit</button></div></td>
+        </tr>
+      `).join("");
+    }
+
     function isStorageSetupError(error) {
       const message = String(error?.message || "").toLowerCase();
       return message.includes("bucket") ||
@@ -255,7 +385,7 @@
     }
 
     async function refreshRelated() {
-      const [notes, files, invoices] = await Promise.all([
+      const [notes, files, invoices, plans] = await Promise.all([
         getCustomerNotes(customerId).catch((error) => {
           document.getElementById("notesList").innerHTML = `<p class="empty visible">${html(error.message || "Could not load notes.")}</p>`;
           return [];
@@ -268,10 +398,26 @@
           document.getElementById("invoicesList").innerHTML = `<p class="empty visible">${html(error.message || "Could not load invoices.")}</p>`;
           return [];
         }),
+        getPackagePaymentPlans({ customerId }).catch((error) => {
+          console.error("Supabase package payment plans load failed:", error);
+          document.getElementById("paymentPlanStatusMessage").textContent = error.message || "Could not load package payment plan.";
+          document.getElementById("paymentPlanStatusMessage").className = "form-status error";
+          return [];
+        }),
       ]);
       renderNotes(notes);
       renderFiles(files);
       renderInvoices(invoices);
+      fillPaymentPlan(plans[0] || null);
+      if (plans[0]) {
+        renderPaymentSchedule(await getPackagePaymentPlanPayments(plans[0].id).catch((error) => {
+          console.error("Supabase package payment schedule load failed:", error);
+          document.getElementById("paymentScheduleBody").innerHTML = `<tr class="table-state error"><td colspan="7">${html(error.message || "Could not load payment schedule.")}</td></tr>`;
+          return [];
+        }));
+      } else {
+        renderPaymentSchedule([]);
+      }
     }
 
     async function saveCustomer(payload, statusId) {
@@ -337,6 +483,146 @@
         discount_adjustment: numberOrNull(fields.discount_adjustment.value),
         pricing_notes: fields.pricing_notes.value.trim() || null,
       }, "pricingStatus");
+    });
+
+    document.getElementById("addPaymentPlanToggle").addEventListener("click", () => {
+      fillPaymentPlan(null);
+      showPaymentPlanForm(true);
+      document.getElementById("paymentPackageName").focus();
+    });
+
+    ["paymentTotalPackagePrice", "paymentDownPayment", "paymentNumberOfPayments"].forEach((id) => {
+      document.getElementById(id).addEventListener("input", calculatePaymentPlanAmounts);
+    });
+
+    document.getElementById("paymentAmountFinanced").addEventListener("input", (event) => {
+      event.currentTarget.dataset.edited = "true";
+      document.getElementById("paymentMonthlyAmount").dataset.edited = "";
+      calculatePaymentPlanAmounts();
+    });
+
+    document.getElementById("paymentMonthlyAmount").addEventListener("input", (event) => {
+      event.currentTarget.dataset.edited = "true";
+    });
+
+    document.getElementById("paymentStartDate").addEventListener("change", (event) => {
+      if (!document.getElementById("paymentNextDueDate").value) {
+        document.getElementById("paymentNextDueDate").value = event.currentTarget.value;
+      }
+    });
+
+    document.getElementById("paymentPlanForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      calculatePaymentPlanAmounts();
+      setStatus("paymentPlanStatusMessage", "Saving payment plan...");
+      const fields = event.currentTarget.elements;
+
+      try {
+        const saved = await upsertPackagePaymentPlan({
+          id: paymentPlan?.id,
+          customer_id: customerId,
+          package_name: fields.package_name.value.trim() || null,
+          status: fields.status.value,
+          total_package_price: numberOrNull(fields.total_package_price.value),
+          down_payment: numberOrNull(fields.down_payment.value) || 0,
+          amount_financed: numberOrNull(fields.amount_financed.value),
+          number_of_payments: integerOrNull(fields.number_of_payments.value),
+          payment_interval: fields.payment_interval.value,
+          monthly_payment_amount: numberOrNull(fields.monthly_payment_amount.value),
+          start_date: fields.start_date.value || null,
+          next_due_date: fields.next_due_date.value || null,
+          notes: fields.notes.value.trim() || null,
+        });
+        fillPaymentPlan(saved);
+        renderPaymentSchedule(await getPackagePaymentPlanPayments(saved.id));
+        setStatus("paymentPlanStatusMessage", "Payment plan saved.", "success");
+      } catch (error) {
+        console.error("Supabase package payment plan save failed:", error);
+        setStatus("paymentPlanStatusMessage", error.message || "Could not save payment plan.", "error");
+      }
+    });
+
+    document.getElementById("generateSchedule").addEventListener("click", async () => {
+      if (!paymentPlan?.id) {
+        setStatus("paymentPlanStatusMessage", "Save the payment plan before generating a schedule.", "error");
+        return;
+      }
+
+      const payments = Number.parseInt(document.getElementById("paymentNumberOfPayments").value, 10);
+      const amount = Number(document.getElementById("paymentMonthlyAmount").value);
+      const startDate = document.getElementById("paymentStartDate").value;
+
+      if (!payments || payments < 1 || !Number.isFinite(amount) || amount <= 0 || !startDate) {
+        setStatus("paymentPlanStatusMessage", "Number of payments, monthly amount, and start date are required.", "error");
+        return;
+      }
+
+      if (paymentSchedule.length) {
+        setStatus("paymentPlanStatusMessage", "This payment plan already has schedule rows. Edit the existing rows instead of generating duplicates.", "error");
+        return;
+      }
+
+      setStatus("paymentPlanStatusMessage", "Generating payment schedule...");
+      try {
+        const rows = Array.from({ length: payments }, (_, index) => ({
+          payment_plan_id: paymentPlan.id,
+          due_date: isoDateOffset(startDate, index),
+          amount_due: amount,
+          status: "Due",
+        }));
+        await createPackagePaymentSchedule(rows);
+        renderPaymentSchedule(await getPackagePaymentPlanPayments(paymentPlan.id));
+        setStatus("paymentPlanStatusMessage", "Payment schedule generated.", "success");
+      } catch (error) {
+        console.error("Supabase package payment schedule generate failed:", error);
+        setStatus("paymentPlanStatusMessage", error.message || "Could not generate payment schedule.", "error");
+      }
+    });
+
+    document.getElementById("paymentScheduleBody").addEventListener("click", async (event) => {
+      const paidButton = event.target.closest("[data-payment-paid]");
+      const pastDueButton = event.target.closest("[data-payment-past-due]");
+      const editButton = event.target.closest("[data-payment-edit]");
+      const id = paidButton?.dataset.paymentPaid || pastDueButton?.dataset.paymentPastDue || editButton?.dataset.paymentEdit;
+      if (!id) return;
+
+      const row = paymentSchedule.find((item) => item.id === id);
+      if (!row) return;
+
+      let payload = {};
+      if (paidButton) {
+        payload = { status: "Paid", amount_paid: row.amount_due || 0, paid_at: new Date().toISOString().slice(0, 10) };
+      } else if (pastDueButton) {
+        payload = { status: "Past due" };
+      } else {
+        const amountDue = window.prompt("Amount due", row.amount_due ?? "");
+        if (amountDue === null) return;
+        const amountPaid = window.prompt("Amount paid", row.amount_paid ?? "");
+        if (amountPaid === null) return;
+        const status = window.prompt("Status", row.status || "Due");
+        if (status === null) return;
+        const paidAt = window.prompt("Paid date (YYYY-MM-DD)", row.paid_at || "");
+        if (paidAt === null) return;
+        const notes = window.prompt("Notes", row.notes || "");
+        if (notes === null) return;
+        payload = {
+          amount_due: amountDue === "" ? null : Number(amountDue),
+          amount_paid: amountPaid === "" ? null : Number(amountPaid),
+          status: status || "Due",
+          paid_at: paidAt || null,
+          notes: notes || null,
+        };
+      }
+
+      setStatus("paymentPlanStatusMessage", "Updating schedule row...");
+      try {
+        await updatePackagePaymentPlanPayment(id, payload);
+        renderPaymentSchedule(await getPackagePaymentPlanPayments(paymentPlan.id));
+        setStatus("paymentPlanStatusMessage", "Schedule row updated.", "success");
+      } catch (error) {
+        console.error("Supabase package payment schedule update failed:", error);
+        setStatus("paymentPlanStatusMessage", error.message || "Could not update schedule row.", "error");
+      }
     });
 
     document.getElementById("createCustomerTicket").addEventListener("click", async (event) => {

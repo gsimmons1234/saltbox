@@ -51,6 +51,11 @@
       </article>
 
       <article class="panel wide">
+        <header class="panel-head"><div><h2 class="panel-title">Care Subscription</h2><p class="panel-subtitle" id="careSubscriptionCount">Loading subscriptions</p></div></header>
+        <div class="panel-body" id="careSubscriptionsList"></div>
+      </article>
+
+      <article class="panel wide">
         <header class="panel-head"><div><h2 class="panel-title">Invoices</h2><p class="panel-subtitle" id="invoiceCount">Loading invoices</p></div></header>
         <div class="table-scroll">
           <table>
@@ -59,6 +64,18 @@
           </table>
         </div>
         <p class="empty" id="invoicesEmpty">No invoices yet.</p>
+      </article>
+
+      <article class="panel wide">
+        <header class="panel-head"><div><h2 class="panel-title">Package Payment Plan</h2><p class="panel-subtitle" id="paymentPlanCount">Loading payment plan</p></div></header>
+        <div class="panel-body meta-list" id="paymentPlanInfo"></div>
+        <div class="table-scroll subscription-table-scroll">
+          <table class="subscription-table">
+            <thead><tr><th>Due date</th><th>Amount due</th><th>Amount paid</th><th>Status</th><th>Paid date</th></tr></thead>
+            <tbody id="paymentScheduleBody"><tr class="table-state"><td colspan="5">Loading payment schedule...</td></tr></tbody>
+          </table>
+        </div>
+        <p class="empty" id="paymentScheduleEmpty">No payment schedule yet.</p>
       </article>
 
       <article class="panel">
@@ -79,8 +96,12 @@
     const status = document.getElementById("portalStatus");
     const businessInfo = document.getElementById("businessInfo");
     const planInfo = document.getElementById("planInfo");
+    const careSubscriptionsList = document.getElementById("careSubscriptionsList");
     const invoicesBody = document.getElementById("invoicesBody");
     const invoicesEmpty = document.getElementById("invoicesEmpty");
+    const paymentPlanInfo = document.getElementById("paymentPlanInfo");
+    const paymentScheduleBody = document.getElementById("paymentScheduleBody");
+    const paymentScheduleEmpty = document.getElementById("paymentScheduleEmpty");
     const ticketsList = document.getElementById("ticketsList");
     const filesList = document.getElementById("filesList");
     let customer = null;
@@ -120,6 +141,82 @@
       return `<div class="meta-row"><span>${html(label)}</span><strong>${html(value || "-")}</strong></div>`;
     }
 
+    function chosenCareSubscription(rows) {
+      return rows.find((row) => row.status === "Active") || rows[0] || null;
+    }
+
+    function renderPlanSummary(row, subscriptions = []) {
+      const subscription = chosenCareSubscription(subscriptions);
+      const packageName = row.selected_package || row.package_interest || "-";
+      const carePlan = subscription?.plan_name || row.selected_care_plan || row.care_plan_interest || "-";
+      const monthlyCare = subscription
+        ? `${money(subscription.amount)} / ${subscription.interval || "month"}`
+        : (row.care_plan_price ? money(row.care_plan_price) : "-");
+
+      planInfo.innerHTML = [
+        meta("Package", packageName),
+        meta("Package price", row.package_price ? money(row.package_price) : "-"),
+        meta("Care plan", carePlan),
+        meta("Monthly care", monthlyCare),
+      ].join("");
+    }
+
+    function renderPaymentPlan(plan, payments = []) {
+      if (!plan) {
+        document.getElementById("paymentPlanCount").textContent = "No active package payment plan";
+        paymentPlanInfo.innerHTML = '<p class="empty visible">No package payment plan yet.</p>';
+        paymentScheduleBody.innerHTML = "";
+        paymentScheduleEmpty.classList.add("visible");
+        return;
+      }
+
+      document.getElementById("paymentPlanCount").textContent = plan.status || "Draft";
+      paymentPlanInfo.innerHTML = [
+        meta("Package", plan.package_name),
+        meta("Total package price", plan.total_package_price ? money(plan.total_package_price) : "-"),
+        meta("Monthly payment", plan.monthly_payment_amount ? money(plan.monthly_payment_amount) : "-"),
+        meta("Number of payments", plan.number_of_payments),
+        meta("Next due date", plan.next_due_date),
+        meta("Status", plan.status),
+      ].join("");
+
+      if (!payments.length) {
+        paymentScheduleBody.innerHTML = "";
+        paymentScheduleEmpty.classList.add("visible");
+        return;
+      }
+
+      paymentScheduleEmpty.classList.remove("visible");
+      paymentScheduleBody.innerHTML = payments.map((row) => `
+        <tr>
+          <td data-label="Due date">${html(row.due_date || "-")}</td>
+          <td data-label="Amount due">${money(row.amount_due)}</td>
+          <td data-label="Amount paid">${money(row.amount_paid)}</td>
+          <td data-label="Status">${html(row.status || "Due")}</td>
+          <td data-label="Paid date">${html(row.paid_at || "-")}</td>
+        </tr>
+      `).join("");
+    }
+
+    function renderCareSubscriptions(rows) {
+      document.getElementById("careSubscriptionCount").textContent = `${rows.length} subscription${rows.length === 1 ? "" : "s"}`;
+
+      if (!rows.length) {
+        careSubscriptionsList.innerHTML = '<p class="empty visible">No care subscription is active yet.</p>';
+        return;
+      }
+
+      careSubscriptionsList.innerHTML = rows.map((row) => `
+        <div class="invoice-row">
+          <div>
+            <strong>${html(row.plan_name || "Care plan")}</strong>
+            <div class="muted">${html(row.status || "Draft")} - Created ${formatDate(row.created_at)}</div>
+          </div>
+          <span>${money(row.amount)} / ${html(row.interval || "month")}</span>
+        </div>
+      `).join("");
+    }
+
     async function callPortalFunction() {
       const response = await fetch("/.netlify/functions/create-customer-portal-session", {
         method: "POST",
@@ -138,7 +235,7 @@
 
       const { data, error } = await supabase
         .from("customers")
-        .select("id, created_at, name, email, phone, business_name, business_type, status, selected_package, package_price, selected_care_plan, care_plan_price")
+        .select("id, created_at, name, email, phone, business_name, business_type, status, selected_package, package_interest, package_price, selected_care_plan, care_plan_interest, care_plan_price")
         .eq("email", email)
         .limit(1)
         .maybeSingle();
@@ -148,8 +245,10 @@
         document.getElementById("pageSubtitle").textContent = "No customer account is linked to this login email yet.";
         businessInfo.innerHTML = '<p class="empty visible">No matching customer record.</p>';
         planInfo.innerHTML = '<p class="empty visible">No plan data available.</p>';
+        renderCareSubscriptions([]);
         invoicesBody.innerHTML = "";
         invoicesEmpty.classList.add("visible");
+        renderPaymentPlan(null);
         ticketsList.innerHTML = '<p class="empty visible">No tickets available.</p>';
         filesList.innerHTML = '<p class="empty visible">No files available.</p>';
         return;
@@ -168,13 +267,6 @@
         meta("Status", data.status),
       ].join("");
 
-      planInfo.innerHTML = [
-        meta("Package", data.selected_package),
-        meta("Package price", data.package_price ? money(data.package_price) : "-"),
-        meta("Care plan", data.selected_care_plan),
-        meta("Monthly care", data.care_plan_price ? money(data.care_plan_price) : "-"),
-      ].join("");
-
       const [invoiceResult, ticketResult, fileResult] = await Promise.all([
         supabase.from("customer_invoices").select("id, title, amount, status, due_date, created_at").eq("customer_id", data.id).order("created_at", { ascending: false }),
         supabase.from("tickets").select("id, title, status, priority, updated_at").eq("customer_id", data.id).order("updated_at", { ascending: false }),
@@ -184,6 +276,54 @@
       if (invoiceResult.error) throw invoiceResult.error;
       if (ticketResult.error) throw ticketResult.error;
       if (fileResult.error) throw fileResult.error;
+
+      try {
+        const { data: subscriptions, error: subscriptionError } = await supabase
+          .from("subscriptions")
+          .select("id, plan_name, amount, interval, status, created_at")
+          .eq("customer_id", data.id)
+          .order("created_at", { ascending: false });
+
+        if (subscriptionError) throw subscriptionError;
+        const subscriptionRows = subscriptions || [];
+        renderPlanSummary(data, subscriptionRows);
+        renderCareSubscriptions(subscriptionRows);
+      } catch (error) {
+        console.error("Supabase customer subscriptions portal load failed:", error);
+        planInfo.innerHTML = `<p class="empty visible">${html(error.message || "Could not load plan summary.")}</p>`;
+        document.getElementById("careSubscriptionCount").textContent = "Unavailable";
+        careSubscriptionsList.innerHTML = `<p class="empty visible">${html(error.message || "Could not load care subscriptions.")}</p>`;
+      }
+
+      try {
+        const { data: plans, error: planError } = await supabase
+          .from("package_payment_plans")
+          .select("id, package_name, total_package_price, monthly_payment_amount, number_of_payments, next_due_date, status")
+          .eq("customer_id", data.id)
+          .order("created_at", { ascending: false })
+          .limit(1);
+
+        if (planError) throw planError;
+
+        const plan = plans?.[0] || null;
+        if (!plan) {
+          renderPaymentPlan(null);
+        } else {
+          const { data: payments, error: paymentsError } = await supabase
+            .from("package_payment_plan_payments")
+            .select("id, due_date, amount_due, amount_paid, status, paid_at")
+            .eq("payment_plan_id", plan.id)
+            .order("due_date", { ascending: true });
+          if (paymentsError) throw paymentsError;
+          renderPaymentPlan(plan, payments || []);
+        }
+      } catch (error) {
+        console.error("Supabase package payment plan portal load failed:", error);
+        document.getElementById("paymentPlanCount").textContent = "Unavailable";
+        paymentPlanInfo.innerHTML = `<p class="empty visible">${html(error.message || "Could not load package payment plan.")}</p>`;
+        paymentScheduleBody.innerHTML = "";
+        paymentScheduleEmpty.classList.add("visible");
+      }
 
       const invoices = invoiceResult.data || [];
       document.getElementById("invoiceCount").textContent = `${invoices.length} invoice${invoices.length === 1 ? "" : "s"}`;
