@@ -115,7 +115,8 @@
                 <div class="field"><label for="paymentNextDueDate">Next due date</label><input id="paymentNextDueDate" name="next_due_date" type="date"></div>
                 <div class="field full"><label for="paymentPlanNotes">Notes</label><textarea id="paymentPlanNotes" name="notes"></textarea></div>
               </div>
-              <div class="button-row" style="margin-top:16px;"><button class="button-link primary" type="submit">Save payment plan</button><button class="button-link" id="generateSchedule" type="button">Generate payment schedule</button></div>
+              <div class="button-row" style="margin-top:16px;"><button class="button-link primary" type="submit">Save payment plan</button><button class="button-link" id="generateSchedule" type="button" disabled>Generate payment schedule</button></div>
+              <p class="page-subtitle" id="paymentScheduleHelp">Save the payment plan before generating a schedule.</p>
               <p class="form-status" id="paymentPlanStatusMessage" role="status" aria-live="polite"></p>
             </form>
             <div class="table-scroll subscription-table-scroll" style="margin-top:18px;">
@@ -305,10 +306,35 @@
       }
     }
 
+    function updateGenerateScheduleState() {
+      const button = document.getElementById("generateSchedule");
+      const help = document.getElementById("paymentScheduleHelp");
+      if (!button || !help) return;
+
+      if (!paymentPlan?.id) {
+        button.disabled = true;
+        button.title = "Save the payment plan before generating a schedule.";
+        help.textContent = "Save the payment plan before generating a schedule.";
+        return;
+      }
+
+      if (paymentSchedule.length) {
+        button.disabled = true;
+        button.title = "This payment plan already has schedule rows.";
+        help.textContent = "Payment schedule already exists. Edit the existing rows instead of generating duplicates.";
+        return;
+      }
+
+      button.disabled = false;
+      button.title = "";
+      help.textContent = "Ready to generate scheduled payment rows from the saved plan.";
+    }
+
     function showPaymentPlanForm(show) {
       document.getElementById("paymentPlanForm").hidden = !show;
       document.getElementById("paymentPlanEmpty").classList.toggle("visible", !show && !paymentPlan);
       document.getElementById("addPaymentPlanToggle").hidden = show || Boolean(paymentPlan);
+      updateGenerateScheduleState();
     }
 
     function fillPaymentPlan(row) {
@@ -328,10 +354,12 @@
       document.getElementById("paymentAmountFinanced").dataset.edited = row?.amount_financed ? "true" : "";
       calculatePaymentPlanAmounts();
       showPaymentPlanForm(Boolean(row));
+      updateGenerateScheduleState();
     }
 
     function renderPaymentSchedule(rows) {
       paymentSchedule = rows;
+      updateGenerateScheduleState();
       const body = document.getElementById("paymentScheduleBody");
       const empty = document.getElementById("paymentScheduleEmpty");
 
@@ -664,15 +692,19 @@
 
     document.getElementById("fileForm").addEventListener("submit", async (event) => {
       event.preventDefault();
-      const file = event.currentTarget.elements.file.files[0];
+      const form = document.getElementById("fileForm");
+      const input = form?.elements?.file;
+      const file = input?.files?.[0];
       if (!file) return;
       setStatus("fileStatus", "Uploading file...");
       try {
         await uploadCustomerFile(customerId, file, admin.session?.user?.email);
-        event.currentTarget.reset();
+        if (form && typeof form.reset === "function") form.reset();
+        if (input) input.value = "";
         renderFiles(await getCustomerFiles(customerId));
         setStatus("fileStatus", "File uploaded.", "success");
       } catch (error) {
+        console.error("Customer file upload failed:", error);
         setStatus("fileStatus", isStorageSetupError(error) ? "Storage bucket or policy is not configured yet." : (error.message || "Could not upload file."), "error");
       }
     });

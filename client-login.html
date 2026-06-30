@@ -52,7 +52,8 @@
 
     if (!supabaseReady) {
       submitButton.disabled = true;
-      setStatus(supabaseConfigError, "error");
+      console.error("Client login Supabase config unavailable:", supabaseConfigError);
+      setStatus("Client login is not available right now. Please contact Saltbox for help accessing your account.", "error");
     } else {
       const { data } = await supabase.auth.getSession();
       if (data.session) window.location.replace("client-dashboard.html");

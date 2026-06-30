@@ -14,10 +14,24 @@
     .client-header { display: flex; justify-content: space-between; align-items: center; gap: 18px; margin-bottom: 28px; }
     .client-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
     .client-grid .wide { grid-column: 1 / -1; }
+    .client-click-row { width: 100%; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; font: inherit; }
+    .client-click-row:hover strong { color: var(--green); }
+    .client-row-main { display: grid; gap: 4px; }
+    .client-modal { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 24px; background: rgba(5, 8, 7, .72); backdrop-filter: blur(10px); }
+    .client-modal[hidden] { display: none; }
+    .client-modal-panel { width: min(100%, 660px); max-height: min(86vh, 760px); overflow: auto; background: var(--ink-2); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 34px 90px rgba(0,0,0,.48); }
+    .client-modal-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 22px 24px; border-bottom: 1px solid var(--line); }
+    .client-modal-body { padding: 22px 24px 26px; display: grid; gap: 18px; }
+    .client-modal-close { border: 1px solid var(--line); background: transparent; color: var(--salt); border-radius: 999px; width: 34px; height: 34px; cursor: pointer; }
+    .client-modal-close:hover { border-color: var(--green); color: var(--green); }
+    .comment-list { display: grid; gap: 12px; }
+    .comment-item { border: 1px solid var(--line); border-radius: 12px; padding: 13px 14px; background: rgba(255,255,255,.02); }
+    .comment-item p { margin-top: 6px; color: var(--salt); }
     @media (max-width: 900px) {
       .client-header { align-items: flex-start; flex-direction: column; }
       .client-grid { grid-template-columns: 1fr; }
       .client-grid .wide { grid-column: auto; }
+      .client-modal { padding: 14px; }
     }
   </style>
 </head>
@@ -90,6 +104,19 @@
     </section>
   </main>
 
+  <div class="client-modal" id="ticketModal" hidden role="dialog" aria-modal="true" aria-labelledby="ticketModalTitle">
+    <div class="client-modal-panel">
+      <header class="client-modal-head">
+        <div>
+          <div class="page-kicker">Ticket</div>
+          <h2 class="panel-title" id="ticketModalTitle">Ticket details</h2>
+        </div>
+        <button class="client-modal-close" id="ticketModalClose" type="button" aria-label="Close ticket details">&times;</button>
+      </header>
+      <div class="client-modal-body" id="ticketModalBody"></div>
+    </div>
+  </div>
+
   <script type="module">
     import { supabase, supabaseReady, supabaseConfigError } from "./supabase-client.js";
 
@@ -104,7 +131,13 @@
     const paymentScheduleEmpty = document.getElementById("paymentScheduleEmpty");
     const ticketsList = document.getElementById("ticketsList");
     const filesList = document.getElementById("filesList");
+    const ticketModal = document.getElementById("ticketModal");
+    const ticketModalBody = document.getElementById("ticketModalBody");
+    const ticketModalTitle = document.getElementById("ticketModalTitle");
+    const ticketModalClose = document.getElementById("ticketModalClose");
     let customer = null;
+    let portalTickets = [];
+    let portalFiles = [];
 
     function html(value) {
       return String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -217,6 +250,91 @@
       `).join("");
     }
 
+    function renderTicketModal(ticket, comments = []) {
+      ticketModalTitle.textContent = ticket.title || "Ticket details";
+      ticketModalBody.innerHTML = `
+        <div class="meta-list">
+          ${meta("Status", ticket.status || "Open")}
+          ${meta("Priority/urgency", ticket.priority || "Normal")}
+          ${meta("Created", formatDate(ticket.created_at))}
+        </div>
+        <div>
+          <div class="page-kicker">Description</div>
+          <p class="page-subtitle">${html(ticket.description || "No description yet.")}</p>
+        </div>
+        <div>
+          <div class="page-kicker">Comments</div>
+          ${comments.length ? `<div class="comment-list">${comments.map((row) => `
+            <div class="comment-item">
+              <div class="muted">${formatDate(row.created_at)}${row.created_by ? ` - ${html(row.created_by)}` : ""}</div>
+              <p>${html(row.comment || "")}</p>
+            </div>
+          `).join("")}</div>` : '<p class="empty visible">No comments yet.</p>'}
+        </div>
+      `;
+      ticketModal.hidden = false;
+    }
+
+    async function openTicket(ticketId) {
+      const ticket = portalTickets.find((row) => row.id === ticketId);
+      if (!ticket) {
+        setStatus("This ticket is not available yet.", "error");
+        return;
+      }
+
+      ticketModalTitle.textContent = ticket.title || "Ticket details";
+      ticketModalBody.innerHTML = '<p class="empty visible">Loading ticket details...</p>';
+      ticketModal.hidden = false;
+
+      try {
+        const { data, error } = await supabase
+          .from("ticket_comments")
+          .select("id, created_at, created_by, comment")
+          .eq("ticket_id", ticket.id)
+          .order("created_at", { ascending: true });
+        if (error) throw error;
+        renderTicketModal(ticket, data || []);
+      } catch (error) {
+        console.error("Client ticket details load failed:", error);
+        ticketModalBody.innerHTML = '<p class="empty visible">This ticket is not available yet.</p>';
+      }
+    }
+
+    async function openFile(fileId) {
+      const file = portalFiles.find((row) => row.id === fileId);
+      if (!file?.file_path) {
+        setStatus("This file is not available to download yet.", "error");
+        return;
+      }
+
+      const targetWindow = window.open("", "_blank");
+      if (targetWindow) targetWindow.opener = null;
+      setStatus("Opening file...");
+      try {
+        const { data, error } = await supabase
+          .storage
+          .from("customer-files")
+          .createSignedUrl(file.file_path, 60);
+        if (error) throw error;
+        if (!data?.signedUrl) throw new Error("No signed URL returned.");
+        if (targetWindow) {
+          targetWindow.location.href = data.signedUrl;
+        } else {
+          const link = document.createElement("a");
+          link.href = data.signedUrl;
+          link.target = "_blank";
+          link.rel = "noopener";
+          link.download = file.file_name || "";
+          link.click();
+        }
+        setStatus("");
+      } catch (error) {
+        if (targetWindow && !targetWindow.closed) targetWindow.close();
+        console.error("Client file signed URL failed:", error);
+        setStatus("This file is not available to download yet.", "error");
+      }
+    }
+
     async function callPortalFunction() {
       const response = await fetch("/.netlify/functions/create-customer-portal-session", {
         method: "POST",
@@ -225,7 +343,10 @@
       });
       const contentType = response.headers.get("content-type") || "";
       const body = contentType.includes("application/json") ? await response.json() : {};
-      if (!response.ok || body.error) throw new Error(body.error || "Stripe portal is not configured yet.");
+      if (!response.ok || body.error) {
+        console.error("Billing portal function failed:", body.error || response.statusText);
+        throw new Error("Billing actions are not active for this account yet.");
+      }
       return body;
     }
 
@@ -249,6 +370,8 @@
         invoicesBody.innerHTML = "";
         invoicesEmpty.classList.add("visible");
         renderPaymentPlan(null);
+        portalTickets = [];
+        portalFiles = [];
         ticketsList.innerHTML = '<p class="empty visible">No tickets available.</p>';
         filesList.innerHTML = '<p class="empty visible">No files available.</p>';
         return;
@@ -269,8 +392,8 @@
 
       const [invoiceResult, ticketResult, fileResult] = await Promise.all([
         supabase.from("customer_invoices").select("id, title, amount, status, due_date, created_at").eq("customer_id", data.id).order("created_at", { ascending: false }),
-        supabase.from("tickets").select("id, title, status, priority, updated_at").eq("customer_id", data.id).order("updated_at", { ascending: false }),
-        supabase.from("customer_files").select("id, file_name, created_at").eq("customer_id", data.id).order("created_at", { ascending: false }),
+        supabase.from("tickets").select("id, title, description, status, priority, created_at, updated_at").eq("customer_id", data.id).order("updated_at", { ascending: false }),
+        supabase.from("customer_files").select("id, file_name, file_path, file_type, created_at").eq("customer_id", data.id).order("created_at", { ascending: false }),
       ]);
 
       if (invoiceResult.error) throw invoiceResult.error;
@@ -290,9 +413,9 @@
         renderCareSubscriptions(subscriptionRows);
       } catch (error) {
         console.error("Supabase customer subscriptions portal load failed:", error);
-        planInfo.innerHTML = `<p class="empty visible">${html(error.message || "Could not load plan summary.")}</p>`;
+        planInfo.innerHTML = '<p class="empty visible">Plan details are not available yet.</p>';
         document.getElementById("careSubscriptionCount").textContent = "Unavailable";
-        careSubscriptionsList.innerHTML = `<p class="empty visible">${html(error.message || "Could not load care subscriptions.")}</p>`;
+        careSubscriptionsList.innerHTML = '<p class="empty visible">Care subscription details are not available yet.</p>';
       }
 
       try {
@@ -320,7 +443,7 @@
       } catch (error) {
         console.error("Supabase package payment plan portal load failed:", error);
         document.getElementById("paymentPlanCount").textContent = "Unavailable";
-        paymentPlanInfo.innerHTML = `<p class="empty visible">${html(error.message || "Could not load package payment plan.")}</p>`;
+        paymentPlanInfo.innerHTML = '<p class="empty visible">Package payment plan details are not available yet.</p>';
         paymentScheduleBody.innerHTML = "";
         paymentScheduleEmpty.classList.add("visible");
       }
@@ -343,20 +466,23 @@
       }
 
       const tickets = ticketResult.data || [];
+      portalTickets = tickets;
       document.getElementById("ticketCount").textContent = `${tickets.length} ticket${tickets.length === 1 ? "" : "s"}`;
       ticketsList.innerHTML = tickets.length ? tickets.map((row) => `
-        <div class="invoice-row"><div><strong>${html(row.title || "Untitled ticket")}</strong><div class="muted">${html(row.priority || "Normal")} - ${formatDate(row.updated_at)}</div></div><span class="status ${html((row.status || "Open").toLowerCase().replace(/\s+/g, "-"))}">${html(row.status || "Open")}</span></div>
+        <button class="invoice-row client-click-row" type="button" data-ticket-id="${html(row.id)}"><span class="client-row-main"><strong>${html(row.title || "Untitled ticket")}</strong><span class="muted">${html(row.priority || "Normal")} - ${formatDate(row.created_at)}</span></span><span class="status ${html((row.status || "Open").toLowerCase().replace(/\s+/g, "-"))}">${html(row.status || "Open")}</span></button>
       `).join("") : '<p class="empty visible">No tickets yet.</p>';
 
       const files = fileResult.data || [];
+      portalFiles = files;
       document.getElementById("fileCount").textContent = `${files.length} file${files.length === 1 ? "" : "s"}`;
       filesList.innerHTML = files.length ? files.map((row) => `
-        <div class="file-row"><span>${html(row.file_name || "Untitled file")}</span><span class="muted">${formatDate(row.created_at)}</span></div>
+        <button class="file-row client-click-row" type="button" data-file-id="${html(row.id)}"><span>${html(row.file_name || "Untitled file")}</span><span class="muted">${formatDate(row.created_at)}</span></button>
       `).join("") : '<p class="empty visible">No files yet.</p>';
     }
 
     if (!supabaseReady) {
-      setStatus(supabaseConfigError, "error");
+      console.error("Client dashboard Supabase config unavailable:", supabaseConfigError);
+      setStatus("Client dashboard is not available right now. Please contact Saltbox for help accessing your account.", "error");
     } else {
       const { data, error } = await supabase.auth.getSession();
       if (error || !data.session) {
@@ -365,7 +491,8 @@
         try {
           await loadPortal(data.session);
         } catch (error) {
-          setStatus(error.message || "Could not load client dashboard.", "error");
+          console.error("Client dashboard load failed:", error);
+          setStatus("Your account details are not available yet.", "error");
         }
       }
     }
@@ -375,6 +502,30 @@
       window.location.replace("client-login.html");
     });
 
+    ticketsList.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-ticket-id]");
+      if (!button) return;
+      openTicket(button.dataset.ticketId);
+    });
+
+    filesList.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-file-id]");
+      if (!button) return;
+      openFile(button.dataset.fileId);
+    });
+
+    ticketModalClose.addEventListener("click", () => {
+      ticketModal.hidden = true;
+    });
+
+    ticketModal.addEventListener("click", (event) => {
+      if (event.target === ticketModal) ticketModal.hidden = true;
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") ticketModal.hidden = true;
+    });
+
     document.getElementById("manageBilling").addEventListener("click", async (event) => {
       event.currentTarget.disabled = true;
       setStatus("Opening billing portal...");
@@ -382,7 +533,8 @@
         const result = await callPortalFunction();
         if (result.url) window.location.href = result.url;
       } catch (error) {
-        setStatus(error.message || "Stripe portal is not configured yet.", "error");
+        console.error("Billing portal unavailable:", error);
+        setStatus(error.message || "Billing actions are not active for this account yet.", "error");
       } finally {
         event.currentTarget.disabled = false;
       }

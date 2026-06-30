@@ -395,6 +395,21 @@ using (
   )
 );
 
+drop policy if exists "Customers can read own ticket comments" on public.ticket_comments;
+create policy "Customers can read own ticket comments"
+on public.ticket_comments
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.tickets
+    join public.customers on customers.id = tickets.customer_id
+    where tickets.id = ticket_comments.ticket_id
+    and lower(customers.email) = lower(auth.jwt() ->> 'email')
+  )
+);
+
 drop policy if exists "Customers can read own file metadata" on public.customer_files;
 create policy "Customers can read own file metadata"
 on public.customer_files
@@ -436,9 +451,9 @@ using (
   )
 );
 
--- Private customer file bucket. Object reads/writes are admin-only for launch;
--- the customer portal lists file metadata only until signed download URLs are
--- created through a server-side Netlify Function.
+-- Private customer file bucket. Admins can manage files. Customers can read
+-- only storage objects that have matching customer_files metadata tied to their
+-- authenticated email, allowing short-lived signed URLs in the customer portal.
 insert into storage.buckets (id, name, public)
 values ('customer-files', 'customer-files', false)
 on conflict (id) do nothing;
@@ -451,6 +466,23 @@ for all
 to authenticated
 using (bucket_id = 'customer-files' and public.is_admin())
 with check (bucket_id = 'customer-files' and public.is_admin());
+
+drop policy if exists "Customers can read own storage files" on storage.objects;
+create policy "Customers can read own storage files"
+on storage.objects
+for select
+to authenticated
+using (
+  bucket_id = 'customer-files'
+  and exists (
+    select 1
+    from public.customer_files
+    join public.customers
+    on customers.id = customer_files.customer_id
+    where customer_files.file_path = storage.objects.name
+    and lower(customers.email) = lower(auth.jwt() ->> 'email')
+  )
+);
 
 -- Netlify Functions will later use server-side environment variables only:
 -- STRIPE_SECRET_KEY
