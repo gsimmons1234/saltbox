@@ -4,6 +4,9 @@
 
 Saltbox is a static HTML/CSS/JavaScript site deployed on Netlify.
 
+- Production URL: `https://saltboxwebdesign.com`
+- Netlify project: `saltboxwebdesign`
+
 - Supabase provides Auth, Postgres data, Row Level Security, and private customer file storage.
 - Netlify Functions are the only server-side Stripe runtime.
 - Stripe hosts invoice payment, subscription Checkout, and the customer billing portal.
@@ -72,6 +75,8 @@ Required Netlify environment variables are documented in `.env.example`:
 - `STRIPE_WEBHOOK_SECRET`
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
+
+As of July 22, 2026, `SITE_URL`, `SUPABASE_URL`, and `SUPABASE_SERVICE_ROLE_KEY` are configured and verified in Netlify production and deploy-preview contexts. `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` still need Stripe test-mode values before end-to-end billing tests can run.
 
 Use Stripe test-mode keys first. Configure the webhook endpoint as:
 
