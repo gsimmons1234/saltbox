@@ -143,7 +143,7 @@ The temporary Supabase Auth user and database rows were deleted, the Checkout se
 
 1. Sign in through the real admin UI and create a test invoice for a real test customer.
 2. Send the Stripe invoice from Saltbox. In test mode, copy its secure payment link and open it as the customer; Stripe does not deliver test-mode invoice emails.
-3. Create a care-plan Checkout through the admin UI and complete the hosted Checkout with the same test card.
+3. Create a care-plan Checkout through the admin UI, copy the customer Checkout link, and complete it in a private window with the same test card.
 4. Sign in as that customer, open Manage Billing, and confirm invoice history, payment-method update, and end-of-period cancellation are available.
 5. Confirm the Saltbox dashboards show the final `Paid`, `Active`, and `Canceled` statuses.
 

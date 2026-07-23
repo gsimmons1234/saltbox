@@ -75,6 +75,10 @@
         </div>
         <p class="empty" id="subscriptionsEmpty">No subscriptions yet.</p>
         <p class="form-status" id="subscriptionBillingStatus" role="status" aria-live="polite"></p>
+        <div class="button-row" id="checkoutActions" style="margin-top:12px;" hidden>
+          <button class="button-link primary" id="copyCheckoutLink" type="button">Copy customer checkout link</button>
+          <a class="button-link" id="previewCheckoutLink" href="#" target="_blank" rel="noopener">Preview</a>
+        </div>
       </article>
 
       <article class="panel" style="margin-top:18px;">
@@ -109,6 +113,9 @@
     const form = document.getElementById("subscriptionForm");
     const formStatus = document.getElementById("subscriptionFormStatus");
     const billingStatus = document.getElementById("subscriptionBillingStatus");
+    const checkoutActions = document.getElementById("checkoutActions");
+    const copyCheckoutLink = document.getElementById("copyCheckoutLink");
+    const previewCheckoutLink = document.getElementById("previewCheckoutLink");
     const customerSelect = document.getElementById("subscriptionCustomer");
     const planSelect = document.getElementById("subscriptionPlan");
     const amountInput = document.getElementById("subscriptionAmount");
@@ -353,15 +360,27 @@
       const button = event.target.closest("[data-stripe-subscription]");
       if (!button) return;
       button.disabled = true;
+      checkoutActions.hidden = true;
       setBillingStatus("Creating secure Stripe Checkout...");
       try {
         const result = await createStripeCheckout(button.dataset.stripeSubscription);
-        setBillingStatus("Stripe Checkout link created.", "success");
-        window.open(result.url, "_blank", "noopener");
+        copyCheckoutLink.dataset.checkoutUrl = result.url;
+        previewCheckoutLink.href = result.url;
+        checkoutActions.hidden = false;
+        setBillingStatus("Customer Checkout link created. Copy it and send it directly to the customer.", "success");
       } catch (error) {
         setBillingStatus(error.message || "Could not create Stripe Checkout.", "error");
       } finally {
         button.disabled = false;
+      }
+    });
+
+    copyCheckoutLink.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(copyCheckoutLink.dataset.checkoutUrl);
+        setBillingStatus("Customer Checkout link copied.", "success");
+      } catch {
+        setBillingStatus("Could not copy automatically. Open Preview and copy the Stripe page URL.", "error");
       }
     });
 
