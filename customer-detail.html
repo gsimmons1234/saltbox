@@ -680,12 +680,13 @@
 
     document.getElementById("noteForm").addEventListener("submit", async (event) => {
       event.preventDefault();
-      const note = event.currentTarget.elements.note.value.trim();
+      const form = event.currentTarget;
+      const note = form.elements.note.value.trim();
       if (!note) return;
       setStatus("noteStatus", "Saving note...");
       try {
         await addCustomerNote(customerId, note, admin.session?.user?.email);
-        event.currentTarget.reset();
+        form.reset();
         renderNotes(await getCustomerNotes(customerId));
         setStatus("noteStatus", "Note saved.", "success");
       } catch (error) {
@@ -714,7 +715,8 @@
 
     document.getElementById("invoiceForm").addEventListener("submit", async (event) => {
       event.preventDefault();
-      const fields = event.currentTarget.elements;
+      const form = event.currentTarget;
+      const fields = form.elements;
       setStatus("invoiceStatus", "Creating invoice...");
       try {
         await createCustomerInvoice({
@@ -725,7 +727,7 @@
           due_date: fields.due_date.value || null,
           status: "Draft",
         });
-        event.currentTarget.reset();
+        form.reset();
         renderInvoices(await getCustomerInvoices(customerId));
         setStatus("invoiceStatus", "Draft invoice created.", "success");
       } catch (error) {

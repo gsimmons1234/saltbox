@@ -532,7 +532,8 @@
     });
 
     document.getElementById("manageBilling").addEventListener("click", async (event) => {
-      event.currentTarget.disabled = true;
+      const button = event.currentTarget;
+      button.disabled = true;
       setStatus("Opening billing portal...");
       try {
         const result = await callPortalFunction();
@@ -541,7 +542,7 @@
         console.error("Billing portal unavailable:", error);
         setStatus(error.message || "Billing actions are not active for this account yet.", "error");
       } finally {
-        event.currentTarget.disabled = false;
+        button.disabled = false;
       }
     });
   </script>
