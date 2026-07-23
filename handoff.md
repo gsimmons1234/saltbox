@@ -124,15 +124,27 @@ npm run serve
 
 A plain static server cannot execute Netlify Functions. Use a Netlify dev environment or a deploy preview for browser-to-function tests.
 
-### Final Stripe test-mode checklist
+### Live Stripe test-mode verification on July 22, 2026
 
-1. Sign in as an admin and create a draft customer invoice.
-2. Create its Stripe link and complete payment with a Stripe test card.
-3. Confirm the webhook changes the Supabase invoice status to `Paid`.
-4. Create a draft care subscription and click `Create checkout`.
-5. Complete Checkout and confirm the Supabase subscription becomes `Active` with Stripe IDs.
-6. Sign in as that customer and open Manage Billing.
-7. Cancel the test subscription in Stripe and confirm the webhook changes it to `Canceled`.
-8. Replay a webhook in Stripe and confirm the resulting Supabase state remains correct.
+An isolated end-to-end run against deploy preview 1 passed all of these checks:
+
+- Supabase admin JWT authorization
+- Stripe customer creation and ID persistence
+- invoice creation/finalization and payment with Stripe's Visa test token
+- signed `invoice.paid` webhook synchronization to `Paid` in Supabase
+- Stripe-hosted Customer Portal session creation
+- recurring Checkout session creation with the expected amount and monthly interval
+- test-card subscription payment
+- signed subscription `created` and `deleted` webhook synchronization to `Active` and `Canceled`
+
+The temporary Supabase Auth user and database rows were deleted, the Checkout session was expired, the Stripe customer was deleted, the subscription was canceled, and the temporary Product/Price were archived. Paid test invoices remain in Stripe's test data as an audit trail.
+
+### Remaining browser acceptance checklist
+
+1. Sign in through the real admin UI and create a test invoice for a real test customer.
+2. Open the hosted invoice and pay with Stripe test card `4242 4242 4242 4242`.
+3. Create a care-plan Checkout through the admin UI and complete the hosted Checkout with the same test card.
+4. Sign in as that customer, open Manage Billing, and confirm invoice history, payment-method update, and end-of-period cancellation are available.
+5. Confirm the Saltbox dashboards show the final `Paid`, `Active`, and `Canceled` statuses.
 
 Do not switch to live Stripe keys until every item passes in test mode.
