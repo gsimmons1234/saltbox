@@ -76,7 +76,7 @@ Required Netlify environment variables are documented in `.env.example`:
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 
-As of July 22, 2026, `SITE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and the test-mode `STRIPE_SECRET_KEY` are configured and verified in Netlify production and deploy-preview contexts.
+As of July 23, 2026, `SITE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and the test-mode `STRIPE_SECRET_KEY` are configured and verified in Netlify production and deploy-preview contexts. `SITE_URL` is `https://saltboxwebdesign.com` in production and the deploy-preview URL in the deploy-preview context so Stripe returns each flow to the environment that created it.
 
 The Stripe test webhook `we_1TwDPdJV8LiNF8sGc7fRB2sG` targets deploy preview 1 and its write-only signing secret is configured only in Netlify's deploy-preview context. Create a separate webhook for `https://saltboxwebdesign.com/.netlify/functions/stripe-webhook` and set its separate signing secret in the production context when this branch is merged. Do not reuse one endpoint's signing secret for the other URL.
 
