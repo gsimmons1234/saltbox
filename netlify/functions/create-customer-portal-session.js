@@ -1,4 +1,5 @@
 const {
+  bearerToken,
   errorResponse,
   getSiteUrl,
   getStripe,
@@ -12,6 +13,7 @@ function createHandler(deps = {}) {
     if (event.httpMethod !== "POST") return json(405, { error: "Method not allowed." });
 
     try {
+      bearerToken(event);
       const supabase = deps.supabase || getSupabase();
       const { customer } = await (deps.requireCustomer || requireCustomer)(event, supabase);
       const stripe = deps.stripe || getStripe();

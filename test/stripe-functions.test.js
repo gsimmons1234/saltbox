@@ -81,6 +81,19 @@ test("customer authorization matches the verified email exactly", async () => {
   assert.equal(result.customer.id, "customer-1");
 });
 
+test("billing functions reject missing authorization before reading configuration", async () => {
+  const handlers = [
+    createInvoiceHandler(),
+    createPortalHandler(),
+    createSubscriptionHandler(),
+  ];
+  for (const handler of handlers) {
+    const response = await handler({ httpMethod: "POST", headers: {}, body: "{}" });
+    assert.equal(response.statusCode, 401);
+    assert.equal(body(response).error, "Sign in is required.");
+  }
+});
+
 test("customer portal uses the authenticated customer's stored Stripe ID", async () => {
   let portalParams;
   const handler = createPortalHandler({
@@ -101,7 +114,11 @@ test("customer portal uses the authenticated customer's stored Stripe ID", async
     getSiteUrl: () => "https://saltbox.test",
   });
 
-  const response = await handler({ httpMethod: "POST", body: JSON.stringify({ stripe_customer_id: "cus_attacker" }) });
+  const response = await handler({
+    httpMethod: "POST",
+    headers: { authorization: "Bearer token" },
+    body: JSON.stringify({ stripe_customer_id: "cus_attacker" }),
+  });
   assert.equal(response.statusCode, 200);
   assert.equal(body(response).url, "https://billing.stripe.test/session");
   assert.deepEqual(portalParams, {
@@ -116,7 +133,7 @@ test("customer portal refuses accounts that are not linked to Stripe", async () 
     stripe: {},
     requireCustomer: async () => ({ customer: { id: "customer-local", stripe_customer_id: null } }),
   });
-  const response = await handler({ httpMethod: "POST" });
+  const response = await handler({ httpMethod: "POST", headers: { authorization: "Bearer token" } });
   assert.equal(response.statusCode, 409);
 });
 
@@ -135,7 +152,11 @@ test("invoice creation reuses an existing Stripe invoice", async () => {
       },
     }),
   });
-  const response = await handler({ httpMethod: "POST", body: '{"invoice_id":"invoice-local"}' });
+  const response = await handler({
+    httpMethod: "POST",
+    headers: { authorization: "Bearer token" },
+    body: '{"invoice_id":"invoice-local"}',
+  });
   assert.equal(response.statusCode, 200);
   assert.equal(body(response).existing, true);
   assert.equal(adminChecked, true);
@@ -171,7 +192,11 @@ test("invoice creation builds, finalizes, and persists one Stripe invoice", asyn
     persistInvoice: async (_supabase, invoiceId, invoice) => { persisted = { invoiceId, invoice }; },
   });
 
-  const response = await handler({ httpMethod: "POST", body: '{"invoice_id":"invoice-local"}' });
+  const response = await handler({
+    httpMethod: "POST",
+    headers: { authorization: "Bearer token" },
+    body: '{"invoice_id":"invoice-local"}',
+  });
   assert.equal(response.statusCode, 200);
   assert.equal(calls[0][0], "invoice");
   assert.equal(calls[1][1].amount, 125000);
@@ -209,7 +234,11 @@ test("subscription checkout derives recurring price data from the protected reco
     getSiteUrl: () => "https://saltbox.test",
   });
 
-  const response = await handler({ httpMethod: "POST", body: '{"subscription_id":"subscription-local"}' });
+  const response = await handler({
+    httpMethod: "POST",
+    headers: { authorization: "Bearer token" },
+    body: '{"subscription_id":"subscription-local"}',
+  });
   assert.equal(response.statusCode, 200);
   assert.equal(checkout.params.customer, "cus_verified");
   assert.equal(checkout.params.line_items[0].price_data.unit_amount, 7500);
@@ -258,6 +287,12 @@ test("webhook rejects an invalid signature", async () => {
   });
   assert.equal(response.statusCode, 400);
   assert.equal(body(response).error, "Invalid Stripe signature.");
+});
+
+test("webhook rejects a missing signature before reading Stripe configuration", async () => {
+  const response = await createWebhookHandler()({ httpMethod: "POST", headers: {}, body: "{}" });
+  assert.equal(response.statusCode, 400);
+  assert.equal(body(response).error, "Missing Stripe signature.");
 });
 
 test("Stripe statuses map to Saltbox labels", () => {

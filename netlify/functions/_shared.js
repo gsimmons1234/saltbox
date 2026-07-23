@@ -105,6 +105,7 @@ function assertDatabaseResult(result) {
 module.exports = {
   HttpError,
   assertDatabaseResult,
+  bearerToken,
   errorResponse,
   getSiteUrl,
   getStripe,

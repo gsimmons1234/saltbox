@@ -1,6 +1,7 @@
 const {
   HttpError,
   assertDatabaseResult,
+  bearerToken,
   errorResponse,
   getStripe,
   getSupabase,
@@ -60,12 +61,13 @@ function createHandler(deps = {}) {
     if (event.httpMethod !== "POST") return json(405, { error: "Method not allowed." });
 
     try {
+      bearerToken(event);
+      const supabase = deps.supabase || getSupabase();
+      await (deps.requireAdmin || requireAdmin)(event, supabase);
       const payload = parseJson(event);
       const invoiceId = typeof payload.invoice_id === "string" ? payload.invoice_id.trim() : "";
       if (!invoiceId) throw new HttpError(400, "invoice_id is required.");
 
-      const supabase = deps.supabase || getSupabase();
-      await (deps.requireAdmin || requireAdmin)(event, supabase);
       const stripe = deps.stripe || getStripe();
       const { customer, invoice } = await (deps.loadInvoiceContext || loadInvoiceContext)(supabase, invoiceId);
 

@@ -93,9 +93,9 @@ function createHandler(deps = {}) {
     if (event.httpMethod !== "POST") return json(405, { error: "Method not allowed." });
 
     try {
-      const stripe = deps.stripe || getStripe();
       const signature = event.headers?.["stripe-signature"] || event.headers?.["Stripe-Signature"];
       if (!signature) return json(400, { error: "Missing Stripe signature." });
+      const stripe = deps.stripe || getStripe();
 
       const rawBody = event.isBase64Encoded
         ? Buffer.from(event.body || "", "base64").toString("utf8")

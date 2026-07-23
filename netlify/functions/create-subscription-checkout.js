@@ -1,6 +1,7 @@
 const {
   HttpError,
   assertDatabaseResult,
+  bearerToken,
   errorResponse,
   getSiteUrl,
   getStripe,
@@ -33,14 +34,15 @@ function createHandler(deps = {}) {
     if (event.httpMethod !== "POST") return json(405, { error: "Method not allowed." });
 
     try {
+      bearerToken(event);
+      const supabase = deps.supabase || getSupabase();
+      await (deps.requireAdmin || requireAdmin)(event, supabase);
       const payload = parseJson(event);
       const subscriptionId = typeof payload.subscription_id === "string"
         ? payload.subscription_id.trim()
         : "";
       if (!subscriptionId) throw new HttpError(400, "subscription_id is required.");
 
-      const supabase = deps.supabase || getSupabase();
-      await (deps.requireAdmin || requireAdmin)(event, supabase);
       const stripe = deps.stripe || getStripe();
       const { customer, subscription } = await (deps.loadSubscriptionContext || loadSubscriptionContext)(supabase, subscriptionId);
 
