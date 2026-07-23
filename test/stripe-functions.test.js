@@ -162,7 +162,7 @@ test("invoice creation reuses an existing Stripe invoice", async () => {
   assert.equal(adminChecked, true);
 });
 
-test("invoice creation builds, finalizes, and persists one Stripe invoice", async () => {
+test("invoice creation builds, finalizes, sends, and persists one Stripe invoice", async () => {
   const calls = [];
   let persisted;
   const stripe = {
@@ -174,6 +174,14 @@ test("invoice creation builds, finalizes, and persists one Stripe invoice", asyn
       finalizeInvoice: async (id, params, options) => {
         calls.push(["finalize", id, params, options]);
         return { id, hosted_invoice_url: "https://invoice.stripe.test/new" };
+      },
+      sendInvoice: async (id, params, options) => {
+        calls.push(["send", id, params, options]);
+        return {
+          id,
+          hosted_invoice_url: "https://invoice.stripe.test/new",
+          livemode: false,
+        };
       },
     },
     invoiceItems: {
@@ -202,8 +210,12 @@ test("invoice creation builds, finalizes, and persists one Stripe invoice", asyn
   assert.equal(calls[1][1].amount, 125000);
   assert.equal(calls[1][1].invoice, "in_new");
   assert.equal(calls[2][0], "finalize");
+  assert.equal(calls[3][0], "send");
+  assert.equal(calls[3][3].idempotencyKey, "saltbox-send-invoice-invoice-local");
   assert.equal(calls[0][2].idempotencyKey, "saltbox-invoice-invoice-local");
   assert.equal(persisted.invoiceId, "invoice-local");
+  assert.equal(body(response).sent, true);
+  assert.equal(body(response).livemode, false);
 });
 
 test("subscription checkout derives recurring price data from the protected record", async () => {

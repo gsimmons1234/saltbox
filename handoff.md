@@ -60,7 +60,7 @@ The linked project has no deployed Supabase Edge Functions or Edge Function secr
 
 Netlify Functions:
 
-- `create-invoice.js` - admin-only; creates/finalizes one Stripe invoice from a protected Supabase invoice row
+- `create-invoice.js` - admin-only; creates, finalizes, and sends one Stripe invoice from a protected Supabase invoice row
 - `create-subscription-checkout.js` - admin-only; creates recurring Stripe Checkout from a protected subscription row
 - `create-customer-portal-session.js` - customer-only; opens the portal for the Stripe customer linked to the signed-in email
 - `stripe-webhook.js` - signature-verified synchronization for invoices and subscriptions
@@ -142,7 +142,7 @@ The temporary Supabase Auth user and database rows were deleted, the Checkout se
 ### Remaining browser acceptance checklist
 
 1. Sign in through the real admin UI and create a test invoice for a real test customer.
-2. Open the hosted invoice and pay with Stripe test card `4242 4242 4242 4242`.
+2. Send the Stripe invoice from Saltbox. In test mode, copy its secure payment link and open it as the customer; Stripe does not deliver test-mode invoice emails.
 3. Create a care-plan Checkout through the admin UI and complete the hosted Checkout with the same test card.
 4. Sign in as that customer, open Manage Billing, and confirm invoice history, payment-method update, and end-of-period cancellation are available.
 5. Confirm the Saltbox dashboards show the final `Paid`, `Active`, and `Canceled` statuses.

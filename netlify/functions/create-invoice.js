@@ -105,9 +105,17 @@ function createHandler(deps = {}) {
       const finalized = await stripe.invoices.finalizeInvoice(stripeInvoice.id, {}, {
         idempotencyKey: `saltbox-finalize-invoice-${invoice.id}`,
       });
-      await (deps.persistInvoice || persistInvoice)(supabase, invoice.id, finalized);
+      const sent = await stripe.invoices.sendInvoice(finalized.id, {}, {
+        idempotencyKey: `saltbox-send-invoice-${invoice.id}`,
+      });
+      await (deps.persistInvoice || persistInvoice)(supabase, invoice.id, sent);
 
-      return json(200, { id: finalized.id, url: finalized.hosted_invoice_url });
+      return json(200, {
+        id: sent.id,
+        url: sent.hosted_invoice_url,
+        sent: true,
+        livemode: sent.livemode,
+      });
     } catch (error) {
       return errorResponse(error, "Could not create the Stripe invoice.");
     }
