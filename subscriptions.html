@@ -38,7 +38,7 @@
       </header>
 
       <div class="notice">
-        <div><strong>Manual tracking only.</strong> These rows help test customer subscription records before Stripe is live. Stripe billing is not active unless real Stripe IDs and Netlify environment variables are configured.</div>
+        <div><strong>Stripe-ready billing.</strong> Save a care subscription, then create its secure Stripe Checkout link. Test mode should be used until webhook and portal checks pass.</div>
       </div>
 
       <article class="panel">
@@ -69,11 +69,12 @@
 
         <div class="table-scroll subscription-table-scroll">
           <table class="subscription-table">
-            <thead><tr><th>Customer</th><th>Email</th><th>Plan</th><th>Status</th><th>Amount</th><th>Interval</th><th>Created</th><th>Stripe subscription ID</th></tr></thead>
-            <tbody id="subscriptionsBody"><tr class="table-state"><td colspan="8">Loading subscriptions...</td></tr></tbody>
+            <thead><tr><th>Customer</th><th>Email</th><th>Plan</th><th>Status</th><th>Amount</th><th>Interval</th><th>Created</th><th>Stripe subscription ID</th><th>Action</th></tr></thead>
+            <tbody id="subscriptionsBody"><tr class="table-state"><td colspan="9">Loading subscriptions...</td></tr></tbody>
           </table>
         </div>
         <p class="empty" id="subscriptionsEmpty">No subscriptions yet.</p>
+        <p class="form-status" id="subscriptionBillingStatus" role="status" aria-live="polite"></p>
       </article>
 
       <article class="panel" style="margin-top:18px;">
@@ -107,6 +108,7 @@
     const paymentPlanCount = document.getElementById("paymentPlanCount");
     const form = document.getElementById("subscriptionForm");
     const formStatus = document.getElementById("subscriptionFormStatus");
+    const billingStatus = document.getElementById("subscriptionBillingStatus");
     const customerSelect = document.getElementById("subscriptionCustomer");
     const planSelect = document.getElementById("subscriptionPlan");
     const amountInput = document.getElementById("subscriptionAmount");
@@ -126,6 +128,28 @@
     function setFormStatus(message, state = "") {
       formStatus.textContent = message;
       formStatus.className = `form-status ${state}`.trim();
+    }
+
+    function setBillingStatus(message, state = "") {
+      billingStatus.textContent = message;
+      billingStatus.className = `form-status ${state}`.trim();
+    }
+
+    async function createStripeCheckout(subscriptionId) {
+      const response = await fetch("/.netlify/functions/create-subscription-checkout", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${admin.session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ subscription_id: subscriptionId }),
+      });
+      const contentType = response.headers.get("content-type") || "";
+      const result = contentType.includes("application/json") ? await response.json() : {};
+      if (!response.ok || result.error) {
+        throw new Error(result.error || "Stripe Checkout is unavailable.");
+      }
+      return result;
     }
 
     function customerLabel(row) {
@@ -243,6 +267,9 @@
             <td data-label="Interval">${html(row.interval || "month")}</td>
             <td class="muted" data-label="Created">${formatDate(row.created_at)}</td>
             <td data-label="Stripe subscription ID">${html(row.stripe_subscription_id || "-")}</td>
+            <td data-label="Action">${row.stripe_subscription_id
+              ? '<span class="muted">Connected</span>'
+              : `<button class="button-link" type="button" data-stripe-subscription="${html(row.id)}">Create checkout</button>`}</td>
           </tr>
         `;
       }).join("");
@@ -322,6 +349,22 @@
       input.addEventListener("change", renderPaymentPlans);
     });
 
+    body.addEventListener("click", async (event) => {
+      const button = event.target.closest("[data-stripe-subscription]");
+      if (!button) return;
+      button.disabled = true;
+      setBillingStatus("Creating secure Stripe Checkout...");
+      try {
+        const result = await createStripeCheckout(button.dataset.stripeSubscription);
+        setBillingStatus("Stripe Checkout link created.", "success");
+        window.open(result.url, "_blank", "noopener");
+      } catch (error) {
+        setBillingStatus(error.message || "Could not create Stripe Checkout.", "error");
+      } finally {
+        button.disabled = false;
+      }
+    });
+
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       setFormStatus("Saving subscription...");
@@ -354,7 +397,7 @@
     });
 
     if (!admin.redirecting && admin.configError) {
-      setTableState(body, admin.configError, true, 8);
+      setTableState(body, admin.configError, true, 9);
       count.textContent = "Unavailable";
     } else if (!admin.redirecting) {
       try {
@@ -368,7 +411,7 @@
         await refreshSubscriptions();
       } catch (error) {
         console.error("Supabase subscriptions page load failed:", error);
-        setTableState(body, error.message || "Could not load subscriptions.", true, 8);
+        setTableState(body, error.message || "Could not load subscriptions.", true, 9);
         count.textContent = "Unavailable";
       }
 

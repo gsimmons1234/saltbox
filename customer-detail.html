@@ -99,7 +99,7 @@
             <button class="button-link primary" id="addPaymentPlanToggle" type="button">Add payment plan</button>
           </header>
           <div class="panel-body">
-            <p class="page-subtitle">Manual tracking only. Stripe billing is not live unless Stripe IDs and Netlify environment variables are configured.</p>
+            <p class="page-subtitle">Create draft invoices here, then generate secure Stripe-hosted payment links.</p>
             <p class="empty visible" id="paymentPlanEmpty">No package payment plan yet.</p>
             <form id="paymentPlanForm" style="margin-top:16px;" hidden>
               <div class="form-grid">
@@ -401,7 +401,10 @@
     async function callStripeFunction(path, payload) {
       const response = await fetch(path, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Authorization": `Bearer ${admin.session.access_token}`,
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify(payload),
       });
       const contentType = response.headers.get("content-type") || "";
@@ -738,7 +741,6 @@
       try {
         const result = await callStripeFunction("/.netlify/functions/create-invoice", {
           invoice_id: button.dataset.createStripeInvoice,
-          customer_id: customerId,
         });
         setStatus("invoiceStatus", result.url ? "Stripe invoice link created." : "Stripe function completed.", "success");
         if (result.url) window.open(result.url, "_blank", "noopener");
