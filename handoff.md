@@ -76,7 +76,9 @@ Required Netlify environment variables are documented in `.env.example`:
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 
-As of July 22, 2026, `SITE_URL`, `SUPABASE_URL`, and `SUPABASE_SERVICE_ROLE_KEY` are configured and verified in Netlify production and deploy-preview contexts. `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` still need Stripe test-mode values before end-to-end billing tests can run.
+As of July 22, 2026, `SITE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and the test-mode `STRIPE_SECRET_KEY` are configured and verified in Netlify production and deploy-preview contexts.
+
+The Stripe test webhook `we_1TwDPdJV8LiNF8sGc7fRB2sG` targets deploy preview 1 and its write-only signing secret is configured only in Netlify's deploy-preview context. Create a separate webhook for `https://saltboxwebdesign.com/.netlify/functions/stripe-webhook` and set its separate signing secret in the production context when this branch is merged. Do not reuse one endpoint's signing secret for the other URL.
 
 Use Stripe test-mode keys first. Configure the webhook endpoint as:
 
@@ -93,7 +95,7 @@ Subscribe it to:
 - `customer.subscription.updated`
 - `customer.subscription.deleted`
 
-Enable and configure the Stripe Customer Portal before testing the Manage Billing button.
+The test-mode Customer Portal configuration `bpc_1TwDRSJV8LiNF8sGfIRJcJsj` is active and default. It allows invoice history, payment-method updates, and subscription cancellation at the end of the billing period. Customer profile and subscription-plan changes are intentionally disabled so Stripe cannot drift from Supabase's email-based access model or Saltbox's admin-controlled plans.
 
 ## Verification
 
