@@ -484,7 +484,7 @@ using (
   )
 );
 
--- Netlify Functions will later use server-side environment variables only:
+-- Stripe functions use server-side environment variables only:
 -- STRIPE_SECRET_KEY
 -- STRIPE_WEBHOOK_SECRET
 -- SITE_URL

@@ -382,12 +382,13 @@
     document.getElementById("commentForm").addEventListener("submit", async (event) => {
       event.preventDefault();
       if (!activeTicket) return;
-      const comment = event.currentTarget.elements.comment.value.trim();
+      const form = event.currentTarget;
+      const comment = form.elements.comment.value.trim();
       if (!comment) return;
       setStatus("commentStatus", "Saving comment...");
       try {
         await addTicketComment(activeTicket.id, comment, admin.session?.user?.email);
-        event.currentTarget.reset();
+        form.reset();
         renderComments(await getTicketComments(activeTicket.id));
         setStatus("commentStatus", "Comment saved.", "success");
       } catch (error) {

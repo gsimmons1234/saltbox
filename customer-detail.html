@@ -99,7 +99,7 @@
             <button class="button-link primary" id="addPaymentPlanToggle" type="button">Add payment plan</button>
           </header>
           <div class="panel-body">
-            <p class="page-subtitle">Manual tracking only. Stripe billing is not live unless Stripe IDs and Netlify environment variables are configured.</p>
+            <p class="page-subtitle">Create draft invoices here, then generate secure Stripe-hosted payment links.</p>
             <p class="empty visible" id="paymentPlanEmpty">No package payment plan yet.</p>
             <form id="paymentPlanForm" style="margin-top:16px;" hidden>
               <div class="form-grid">
@@ -284,7 +284,12 @@
       list.innerHTML = rows.map((row) => `
         <div class="invoice-row">
           <div><strong>${html(row.title || "Untitled invoice")}</strong><div class="muted">${html(row.status || "Draft")} - Due ${row.due_date ? html(row.due_date) : "-"}</div></div>
-          <div class="button-row"><span>$${Number(row.amount || 0).toFixed(2)}</span><button class="button-link" type="button" data-create-stripe-invoice="${html(row.id)}">Create Stripe link</button></div>
+          <div class="button-row">
+            <span>$${Number(row.amount || 0).toFixed(2)}</span>
+            ${row.stripe_invoice_url
+              ? `<button class="button-link" type="button" data-copy-invoice-url="${html(row.stripe_invoice_url)}">Copy payment link</button><a class="button-link" href="${html(row.stripe_invoice_url)}" target="_blank" rel="noopener">Preview</a>`
+              : `<button class="button-link" type="button" data-create-stripe-invoice="${html(row.id)}">Send Stripe invoice</button>`}
+          </div>
         </div>
       `).join("");
     }
@@ -401,7 +406,10 @@
     async function callStripeFunction(path, payload) {
       const response = await fetch(path, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Authorization": `Bearer ${admin.session.access_token}`,
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify(payload),
       });
       const contentType = response.headers.get("content-type") || "";
@@ -677,12 +685,13 @@
 
     document.getElementById("noteForm").addEventListener("submit", async (event) => {
       event.preventDefault();
-      const note = event.currentTarget.elements.note.value.trim();
+      const form = event.currentTarget;
+      const note = form.elements.note.value.trim();
       if (!note) return;
       setStatus("noteStatus", "Saving note...");
       try {
         await addCustomerNote(customerId, note, admin.session?.user?.email);
-        event.currentTarget.reset();
+        form.reset();
         renderNotes(await getCustomerNotes(customerId));
         setStatus("noteStatus", "Note saved.", "success");
       } catch (error) {
@@ -711,7 +720,8 @@
 
     document.getElementById("invoiceForm").addEventListener("submit", async (event) => {
       event.preventDefault();
-      const fields = event.currentTarget.elements;
+      const form = event.currentTarget;
+      const fields = form.elements;
       setStatus("invoiceStatus", "Creating invoice...");
       try {
         await createCustomerInvoice({
@@ -722,7 +732,7 @@
           due_date: fields.due_date.value || null,
           status: "Draft",
         });
-        event.currentTarget.reset();
+        form.reset();
         renderInvoices(await getCustomerInvoices(customerId));
         setStatus("invoiceStatus", "Draft invoice created.", "success");
       } catch (error) {
@@ -731,19 +741,35 @@
     });
 
     document.getElementById("invoicesList").addEventListener("click", async (event) => {
+      const copyButton = event.target.closest("[data-copy-invoice-url]");
+      if (copyButton) {
+        try {
+          await navigator.clipboard.writeText(copyButton.dataset.copyInvoiceUrl);
+          setStatus("invoiceStatus", "Secure payment link copied. Send it directly to the customer.", "success");
+        } catch {
+          setStatus("invoiceStatus", "Could not copy automatically. Open Preview and copy the Stripe page URL.", "error");
+        }
+        return;
+      }
+
       const button = event.target.closest("[data-create-stripe-invoice]");
       if (!button) return;
       button.disabled = true;
-      setStatus("invoiceStatus", "Calling Stripe invoice function...");
+      setStatus("invoiceStatus", "Sending secure Stripe invoice...");
       try {
         const result = await callStripeFunction("/.netlify/functions/create-invoice", {
           invoice_id: button.dataset.createStripeInvoice,
-          customer_id: customerId,
         });
-        setStatus("invoiceStatus", result.url ? "Stripe invoice link created." : "Stripe function completed.", "success");
-        if (result.url) window.open(result.url, "_blank", "noopener");
+        renderInvoices(await getCustomerInvoices(customerId));
+        setStatus(
+          "invoiceStatus",
+          result.livemode
+            ? "Stripe emailed the secure invoice to the customer."
+            : "Test invoice created. Stripe does not send test-mode email; use Copy payment link to test the customer flow.",
+          "success",
+        );
       } catch (error) {
-        setStatus("invoiceStatus", error.message || "Stripe is not configured yet.", "error");
+        setStatus("invoiceStatus", error.message || "Could not send the Stripe invoice.", "error");
       } finally {
         button.disabled = false;
       }
