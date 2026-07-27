@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <title>Lead - Saltbox Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" aria-label="Admin navigation">
+      <a class="brand" href="index.html" aria-label="Saltbox home"><span class="mark" aria-hidden="true"></span>Saltbox</a>
+      <p class="preview-label">Admin</p>
+      <nav aria-label="Admin pages">
+        <ul class="nav-list">
+          <li><a class="nav-item" data-page="dashboard" href="admin.html">Dashboard</a></li>
+          <li><a class="nav-item" data-page="requests" href="requests.html">Requests</a></li>
+          <li><a class="nav-item" data-page="leads" href="leads.html">Leads</a></li>
+          <li><a class="nav-item" data-page="tickets" href="tickets.html">Tickets</a></li>
+          <li><a class="nav-item" data-page="customers" href="customers.html">Customers</a></li>
+          <li><a class="nav-item" data-page="subscriptions" href="subscriptions.html">Subscriptions</a></li>
+          <li><a class="nav-item" data-page="settings" href="settings.html">Settings</a></li>
+        </ul>
+      </nav>
+      <div class="sidebar-footer"><a class="back-link" href="index.html">Back to site</a></div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div><div class="page-kicker">Lead</div><h1 id="pageTitle">Loading lead...</h1><p class="page-subtitle" id="pageSubtitle">Loading lead details.</p></div>
+        <div class="top-actions">
+          <a class="button-link" href="leads.html">Back to leads</a>
+          <button class="button-link primary" id="convertToCustomerBtn" type="button" hidden>Convert to customer</button>
+          <a class="button-link" id="viewCustomerLink" href="#" hidden>View customer</a>
+          <span class="session-email" data-session-email></span>
+          <button class="logout-btn" data-logout type="button">Log out</button>
+        </div>
+      </header>
+      <p class="form-status" id="leadActionStatus" role="status" aria-live="polite"></p>
+
+      <div class="detail-grid" id="leadDetailGrid" hidden>
+        <article class="panel">
+          <header class="panel-head"><div><h2 class="panel-title">Lead overview</h2><p class="panel-subtitle">Business and contact details</p></div></header>
+          <div class="panel-body">
+            <div class="meta-list" id="overviewMeta" style="margin-bottom:18px;"></div>
+            <form id="overviewForm">
+              <div class="form-grid">
+                <div class="field"><label for="business_name">Business name</label><input id="business_name" name="business_name" type="text" required></div>
+                <div class="field"><label for="contact_name">Contact name</label><input id="contact_name" name="contact_name" type="text"></div>
+                <div class="field"><label for="email">Email</label><input id="email" name="email" type="email"></div>
+                <div class="field"><label for="phone">Phone</label><input id="phone" name="phone" type="tel"></div>
+                <div class="field full"><label for="website_url">Website (leave blank if none)</label><input id="website_url" name="website_url" type="text" placeholder="e.g. example.com"></div>
+                <div class="field full"><label for="address">Address</label><input id="address" name="address" type="text"></div>
+                <div class="field"><label for="city">City</label><input id="city" name="city" type="text"></div>
+                <div class="field"><label for="state">State</label><input id="state" name="state" type="text"></div>
+                <div class="field"><label for="postal_code">Postal code</label><input id="postal_code" name="postal_code" type="text"></div>
+                <div class="field"><label for="country">Country</label><input id="country" name="country" type="text"></div>
+                <div class="field"><label for="category">Category</label><input id="category" name="category" type="text" placeholder="e.g. HVAC contractor"></div>
+                <div class="field"><label for="assigned_to">Assigned to</label><input id="assigned_to" name="assigned_to" type="text"></div>
+                <div class="field full"><label for="notes">Quick notes</label><textarea id="notes" name="notes"></textarea></div>
+              </div>
+              <div class="button-row" style="margin-top:16px;"><button class="button-link primary" type="submit">Save overview</button></div>
+              <p class="form-status" id="overviewStatus" role="status" aria-live="polite"></p>
+            </form>
+          </div>
+        </article>
+
+        <article class="panel">
+          <header class="panel-head"><div><h2 class="panel-title">Status</h2><p class="panel-subtitle">Move this lead through the workflow</p></div></header>
+          <div class="panel-body">
+            <div class="meta-list" style="margin-bottom:16px;">
+              <div class="meta-row"><span>Current status</span><strong><span class="status" id="currentStatusBadge">Discovered</span></strong></div>
+            </div>
+            <form id="statusForm">
+              <div class="field">
+                <label for="statusSelect">Change to</label>
+                <select id="statusSelect" name="status"></select>
+              </div>
+              <div class="field" style="margin-top:12px;">
+                <label for="statusDetail">Reason / detail (required when rejecting or opting out)</label>
+                <textarea id="statusDetail" name="detail" placeholder="Why is this status changing?"></textarea>
+              </div>
+              <div class="button-row" style="margin-top:16px;"><button class="button-link primary" type="submit">Change status</button></div>
+              <p class="form-status" id="statusFormStatus" role="status" aria-live="polite"></p>
+            </form>
+          </div>
+        </article>
+
+        <article class="panel">
+          <header class="panel-head"><div><h2 class="panel-title">Scoring &amp; activity</h2><p class="panel-subtitle">Manual fit assessment (Phase 1 — entered by hand)</p></div></header>
+          <div class="panel-body">
+            <form id="scoringForm">
+              <div class="form-grid">
+                <div class="field"><label for="fit_score">Fit score (0-100)</label><input id="fit_score" name="fit_score" type="number" min="0" max="100" step="1"></div>
+                <div class="field full"><label for="fit_score_reasoning">Fit score reasoning</label><textarea id="fit_score_reasoning" name="fit_score_reasoning" placeholder="Cite what you observed, not assumptions."></textarea></div>
+                <div class="field full"><label for="activity_confirmed">Business appears active</label>
+                  <label style="display:flex;align-items:center;gap:9px;font-family:var(--body);font-size:.9rem;color:var(--salt);font-weight:400;text-transform:none;letter-spacing:0;">
+                    <input id="activity_confirmed" name="activity_confirmed" type="checkbox" style="width:auto;"> Confirmed active based on evidence below
+                  </label>
+                </div>
+                <div class="field full"><label for="activity_confirmed_notes">Activity evidence notes</label><textarea id="activity_confirmed_notes" name="activity_confirmed_notes" placeholder="e.g. recent posts, current hours listed, reviews within the last few months"></textarea></div>
+              </div>
+              <div class="button-row" style="margin-top:16px;"><button class="button-link primary" type="submit">Save scoring</button></div>
+              <p class="form-status" id="scoringStatus" role="status" aria-live="polite"></p>
+            </form>
+          </div>
+        </article>
+
+        <article class="panel">
+          <header class="panel-head"><div><h2 class="panel-title">Suppression list</h2><p class="panel-subtitle">Check and manage permanent opt-outs</p></div></header>
+          <div class="panel-body">
+            <div class="button-row"><button class="button-link" id="checkOptOutBtn" type="button">Check suppression list</button></div>
+            <div id="optOutResults" style="margin-top:14px;"></div>
+            <form id="optOutForm" style="margin-top:18px;">
+              <div class="field"><label for="optOutReason">Reason for suppression</label><textarea id="optOutReason" name="reason" placeholder="e.g. asked not to be contacted"></textarea></div>
+              <div class="field" style="margin-top:12px;">
+                <label for="optOutSource">Source</label>
+                <select id="optOutSource" name="source">
+                  <option value="manual_admin">Manual (admin decision)</option>
+                  <option value="recipient_reply">Recipient reply</option>
+                  <option value="unsubscribe_link">Unsubscribe link</option>
+                </select>
+              </div>
+              <div class="button-row" style="margin-top:16px;"><button class="button-link primary" type="submit">Add to suppression list</button></div>
+              <p class="form-status" id="optOutFormStatus" role="status" aria-live="polite"></p>
+            </form>
+          </div>
+        </article>
+
+        <article class="panel wide">
+          <header class="panel-head"><div><h2 class="panel-title">Duplicate check</h2><p class="panel-subtitle">Compare this lead against every other lead on file</p></div></header>
+          <div class="panel-body">
+            <div class="button-row"><button class="button-link" id="checkDuplicatesBtn" type="button">Check for duplicates</button></div>
+            <p class="form-status" id="duplicateCheckStatus" role="status" aria-live="polite"></p>
+            <div id="duplicateResults" style="margin-top:14px;"></div>
+          </div>
+        </article>
+
+        <article class="panel wide">
+          <header class="panel-head"><div><h2 class="panel-title">Source records</h2><p class="panel-subtitle">Where each piece of business or contact information came from</p></div></header>
+          <div class="panel-body">
+            <form id="sourceForm">
+              <div class="form-grid">
+                <div class="field"><label for="sourceFieldName">Field</label><input id="sourceFieldName" name="field_name" type="text" list="sourceFieldSuggestions" placeholder="e.g. phone" required></div>
+                <datalist id="sourceFieldSuggestions">
+                  <option value="business_name"></option>
+                  <option value="contact_name"></option>
+                  <option value="email"></option>
+                  <option value="phone"></option>
+                  <option value="website_url"></option>
+                  <option value="address"></option>
+                  <option value="city"></option>
+                  <option value="category"></option>
+                </datalist>
+                <div class="field"><label for="sourceFieldValue">Value found</label><input id="sourceFieldValue" name="field_value" type="text" required></div>
+                <div class="field full"><label for="sourceUrl">Source URL</label><input id="sourceUrl" name="source_url" type="url" required placeholder="https://..."></div>
+                <div class="field">
+                  <label for="sourceType">Source type</label>
+                  <select id="sourceType" name="source_type">
+                    <option value="manual">Manual</option>
+                    <option value="search_result">Search result</option>
+                    <option value="directory">Directory listing</option>
+                    <option value="social">Social profile</option>
+                    <option value="maps">Maps listing</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+                <div class="field full"><label for="sourceNotes">Notes</label><textarea id="sourceNotes" name="notes"></textarea></div>
+              </div>
+              <div class="button-row" style="margin-top:16px;"><button class="button-link primary" type="submit">Add source record</button></div>
+              <p class="form-status" id="sourceFormStatus" role="status" aria-live="polite"></p>
+            </form>
+            <div id="sourcesList" style="margin-top:18px;"></div>
+          </div>
+        </article>
+
+        <article class="panel wide">
+          <header class="panel-head"><div><h2 class="panel-title">Activity log</h2><p class="panel-subtitle">Every status change and note for this lead</p></div></header>
+          <div class="panel-body">
+            <form id="noteForm">
+              <div class="field"><label for="noteText">Add note</label><textarea id="noteText" name="note" required></textarea></div>
+              <div class="button-row" style="margin-top:12px;"><button class="button-link primary" type="submit">Save note</button></div>
+              <p class="form-status" id="noteStatus" role="status" aria-live="polite"></p>
+            </form>
+            <div class="note-list" id="activityList" style="margin-top:18px;"></div>
+          </div>
+        </article>
+      </div>
+    </main>
+  </div>
+
+  <script type="module">
+    import { formatDate, html, initAdminPage } from "./admin.js";
+    import {
+      addLeadNote,
+      addLeadSource,
+      allowedNextStatuses,
+      allowedNextStatusesForDropdown,
+      changeLeadStatus,
+      convertLeadToCustomer,
+      findDuplicateLeads,
+      findOptOutMatches,
+      getActivityLog,
+      getLead,
+      getLeadSources,
+      leadDetailUrl,
+      leadStatusClass,
+      markLeadDuplicate,
+      optOutLead,
+      sanitizeUrl,
+      updateLead,
+    } from "./leads.js";
+
+    const admin = await initAdminPage("leads");
+    const params = new URLSearchParams(window.location.search);
+    const leadId = params.get("id");
+    let lead = null;
+
+    function setStatus(id, message, state = "") {
+      const node = document.getElementById(id);
+      node.textContent = message;
+      node.className = `form-status ${state}`.trim();
+    }
+
+    function numberOrNull(value) {
+      return value === "" || value === null || value === undefined ? null : Number(value);
+    }
+
+    function renderLink(rawUrl, label) {
+      const safe = sanitizeUrl(rawUrl);
+      if (!safe) return html(label ?? rawUrl ?? "");
+      return `<a class="row-link" href="${html(safe)}" target="_blank" rel="noopener noreferrer">${html(label ?? safe)}</a>`;
+    }
+
+    function populateStatusSelect() {
+      const select = document.getElementById("statusSelect");
+      const options = allowedNextStatusesForDropdown(lead.status);
+      if (!options.length) {
+        select.innerHTML = "";
+        select.disabled = true;
+        document.querySelector("#statusForm button[type=submit]").disabled = true;
+        return;
+      }
+      select.disabled = false;
+      document.querySelector("#statusForm button[type=submit]").disabled = false;
+      select.innerHTML = options.map((value) => `<option value="${html(value)}">${html(value)}</option>`).join("");
+    }
+
+    function fillLead(row) {
+      lead = row;
+      document.getElementById("leadDetailGrid").hidden = false;
+      document.getElementById("pageTitle").textContent = row.business_name || "Unnamed lead";
+      document.getElementById("pageSubtitle").textContent = `${row.status || "Discovered"} - added ${formatDate(row.created_at).replace("&mdash;", "-")}`;
+
+      ["business_name", "contact_name", "email", "phone", "website_url", "address", "city", "state", "postal_code", "country", "category", "assigned_to", "notes"].forEach((field) => {
+        const input = document.getElementById(field);
+        if (input) input.value = row[field] || "";
+      });
+
+      document.getElementById("fit_score").value = row.fit_score === null || row.fit_score === undefined ? "" : row.fit_score;
+      document.getElementById("fit_score_reasoning").value = row.fit_score_reasoning || "";
+      document.getElementById("activity_confirmed").checked = Boolean(row.activity_confirmed);
+      document.getElementById("activity_confirmed_notes").value = row.activity_confirmed_notes || "";
+
+      const badge = document.getElementById("currentStatusBadge");
+      badge.textContent = row.status || "Discovered";
+      badge.className = `status ${leadStatusClass(row.status)}`;
+      populateStatusSelect();
+
+      const metaRows = [
+        `<div class="meta-row"><span>Created</span><strong>${formatDate(row.created_at)}</strong></div>`,
+        `<div class="meta-row"><span>Last updated</span><strong>${formatDate(row.updated_at)}</strong></div>`,
+        `<div class="meta-row"><span>Discovery method</span><strong>${html(row.discovery_method || "manual")}</strong></div>`,
+        `<div class="meta-row"><span>Has website</span><strong>${row.has_website ? "Yes" : "No"}</strong></div>`,
+      ];
+      if (row.rejected_reason) {
+        metaRows.push(`<div class="meta-row"><span>Rejected reason</span><strong>${html(row.rejected_reason)}</strong></div>`);
+      }
+      if (row.duplicate_of) {
+        metaRows.push(`<div class="meta-row"><span>Duplicate of</span><strong><a class="row-link" href="${leadDetailUrl(row.duplicate_of)}">Open original lead</a></strong></div>`);
+      }
+      if (row.website_url) {
+        metaRows.push(`<div class="meta-row"><span>Website</span><strong>${renderLink(row.website_url, row.normalized_website_domain || row.website_url)}</strong></div>`);
+      }
+      document.getElementById("overviewMeta").innerHTML = metaRows.join("");
+
+      const convertBtn = document.getElementById("convertToCustomerBtn");
+      const viewCustomerLink = document.getElementById("viewCustomerLink");
+      if (row.converted_customer_id) {
+        convertBtn.hidden = true;
+        viewCustomerLink.hidden = false;
+        viewCustomerLink.href = `customer-detail.html?id=${encodeURIComponent(row.converted_customer_id)}`;
+      } else {
+        convertBtn.hidden = false;
+        convertBtn.disabled = false;
+        convertBtn.textContent = "Convert to customer";
+        viewCustomerLink.hidden = true;
+      }
+    }
+
+    function renderSources(rows) {
+      const list = document.getElementById("sourcesList");
+      if (!rows.length) {
+        list.innerHTML = '<p class="empty visible">No source records yet. Add one below for every fact you record about this business.</p>';
+        return;
+      }
+      list.innerHTML = rows.map((row) => `
+        <article class="note-item">
+          <div class="note-meta">${html(row.field_name)}: ${html(row.field_value)} &middot; ${html(row.source_type)} &middot; ${formatDate(row.captured_at)}</div>
+          <p>${renderLink(row.source_url)}${row.notes ? ` &mdash; ${html(row.notes)}` : ""}</p>
+        </article>
+      `).join("");
+    }
+
+    function renderActivity(rows) {
+      const list = document.getElementById("activityList");
+      if (!rows.length) {
+        list.innerHTML = '<p class="empty visible">No activity yet.</p>';
+        return;
+      }
+      list.innerHTML = rows.map((row) => {
+        const transition = row.from_status || row.to_status ? `${html(row.from_status || "-")} &rarr; ${html(row.to_status || "-")}` : "";
+        return `
+          <article class="note-item">
+            <div class="note-meta">${formatDate(row.created_at)}${row.actor ? ` &middot; ${html(row.actor)}` : ""} &middot; ${html(row.action)}</div>
+            ${transition ? `<p class="muted">${transition}</p>` : ""}
+            ${row.detail ? `<p>${html(row.detail)}</p>` : ""}
+          </article>
+        `;
+      }).join("");
+    }
+
+    async function refreshSources() {
+      renderSources(await getLeadSources(leadId).catch((error) => {
+        document.getElementById("sourcesList").innerHTML = `<p class="empty visible">${html(error.message || "Could not load source records.")}</p>`;
+        return [];
+      }));
+    }
+
+    async function refreshActivity() {
+      renderActivity(await getActivityLog(leadId).catch((error) => {
+        document.getElementById("activityList").innerHTML = `<p class="empty visible">${html(error.message || "Could not load activity log.")}</p>`;
+        return [];
+      }));
+    }
+
+    if (!admin.redirecting && !leadId) {
+      document.getElementById("pageTitle").textContent = "Lead unavailable";
+      document.getElementById("pageSubtitle").textContent = "Missing lead id.";
+    } else if (!admin.redirecting && admin.configError) {
+      document.getElementById("pageSubtitle").textContent = admin.configError;
+    } else if (!admin.redirecting) {
+      try {
+        fillLead(await getLead(leadId));
+        await Promise.all([refreshSources(), refreshActivity()]);
+      } catch (error) {
+        document.getElementById("pageTitle").textContent = "Lead unavailable";
+        document.getElementById("pageSubtitle").textContent = error.message || "Could not load lead.";
+      }
+    }
+
+    document.getElementById("overviewForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const fields = event.currentTarget.elements;
+      setStatus("overviewStatus", "Saving...");
+      try {
+        const updated = await updateLead(leadId, {
+          business_name: fields.business_name.value.trim(),
+          contact_name: fields.contact_name.value.trim() || null,
+          email: fields.email.value.trim() || null,
+          phone: fields.phone.value.trim() || null,
+          website_url: fields.website_url.value.trim() || null,
+          address: fields.address.value.trim() || null,
+          city: fields.city.value.trim() || null,
+          state: fields.state.value.trim() || null,
+          postal_code: fields.postal_code.value.trim() || null,
+          country: fields.country.value.trim() || "US",
+          category: fields.category.value.trim() || null,
+          assigned_to: fields.assigned_to.value.trim() || null,
+          notes: fields.notes.value.trim() || null,
+        });
+        fillLead(updated);
+        setStatus("overviewStatus", "Saved.", "success");
+      } catch (error) {
+        setStatus("overviewStatus", error.message || "Could not save overview.", "error");
+      }
+    });
+
+    document.getElementById("scoringForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const fields = event.currentTarget.elements;
+      const score = numberOrNull(fields.fit_score.value);
+      if (score !== null && (score < 0 || score > 100)) {
+        setStatus("scoringStatus", "Fit score must be between 0 and 100.", "error");
+        return;
+      }
+      setStatus("scoringStatus", "Saving...");
+      try {
+        const updated = await updateLead(leadId, {
+          fit_score: score,
+          fit_score_reasoning: fields.fit_score_reasoning.value.trim() || null,
+          activity_confirmed: fields.activity_confirmed.checked,
+          activity_confirmed_notes: fields.activity_confirmed_notes.value.trim() || null,
+        });
+        fillLead(updated);
+        setStatus("scoringStatus", "Saved.", "success");
+      } catch (error) {
+        setStatus("scoringStatus", error.message || "Could not save scoring.", "error");
+      }
+    });
+
+    document.getElementById("statusForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const fields = event.currentTarget.elements;
+      const newStatus = fields.status.value;
+      const detail = fields.detail.value.trim();
+
+      if (newStatus === "Rejected" && !detail) {
+        setStatus("statusFormStatus", "Add a reason before rejecting this lead.", "error");
+        return;
+      }
+
+      setStatus("statusFormStatus", "Updating status...");
+      try {
+        const updated = await changeLeadStatus(lead, newStatus, { detail: detail || null });
+        fillLead(updated);
+        event.currentTarget.reset();
+        await refreshActivity();
+        setStatus("statusFormStatus", `Status changed to ${newStatus}.`, "success");
+      } catch (error) {
+        setStatus("statusFormStatus", error.message || "Could not change status.", "error");
+      }
+    });
+
+    document.getElementById("checkDuplicatesBtn").addEventListener("click", async () => {
+      setStatus("duplicateCheckStatus", "Checking for duplicates...");
+      const results = document.getElementById("duplicateResults");
+      try {
+        const { hardMatches, fuzzyMatches } = await findDuplicateLeads({
+          businessName: lead.business_name,
+          city: lead.city,
+          email: lead.email,
+          phone: lead.phone,
+          websiteUrl: lead.website_url,
+          excludeId: lead.id,
+        });
+
+        if (!hardMatches.length && !fuzzyMatches.length) {
+          results.innerHTML = '<p class="empty visible">No likely duplicates found.</p>';
+          setStatus("duplicateCheckStatus", "Checked.", "success");
+          return;
+        }
+
+        const canMarkDuplicate = allowedNextStatuses(lead.status).includes("Duplicate");
+        const renderMatch = (match, scoreLabel) => {
+          console.assert(match.lead.id, "Duplicate match is missing lead id", match);
+          return `
+          <div class="meta-row">
+            <span><a class="row-link" href="${leadDetailUrl(match.lead.id)}">${html(match.lead.business_name)}</a>${scoreLabel ? ` (${scoreLabel})` : ""}</span>
+            <strong>${canMarkDuplicate ? `<button class="button-link" type="button" data-mark-duplicate="${html(match.lead.id)}">Mark as duplicate of this lead</button>` : "Status does not allow marking as duplicate"}</strong>
+          </div>
+        `;
+        };
+
+        let markup = "";
+        if (hardMatches.length) {
+          markup += `<p class="notice error">Exact matches found on email, phone, or website.</p><div class="meta-list">${hardMatches.map((match) => renderMatch(match, match.reasons.join(", "))).join("")}</div>`;
+        }
+        if (fuzzyMatches.length) {
+          markup += `<p class="notice" style="margin-top:14px;">Possibly similar business names.</p><div class="meta-list">${fuzzyMatches.map((match) => renderMatch(match, `${Math.round(match.score * 100)}% similar`)).join("")}</div>`;
+        }
+        results.innerHTML = markup;
+        setStatus("duplicateCheckStatus", "Checked.", "success");
+      } catch (error) {
+        setStatus("duplicateCheckStatus", error.message || "Could not check for duplicates.", "error");
+      }
+    });
+
+    document.getElementById("duplicateResults").addEventListener("click", async (event) => {
+      const button = event.target.closest("[data-mark-duplicate]");
+      if (!button) return;
+      button.disabled = true;
+      button.textContent = "Marking...";
+      try {
+        const updated = await markLeadDuplicate(lead.id, button.dataset.markDuplicate);
+        fillLead(updated);
+        await refreshActivity();
+        setStatus("duplicateCheckStatus", "Marked as duplicate.", "success");
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = "Mark as duplicate of this lead";
+        setStatus("duplicateCheckStatus", error.message || "Could not mark as duplicate.", "error");
+      }
+    });
+
+    document.getElementById("checkOptOutBtn").addEventListener("click", async () => {
+      const results = document.getElementById("optOutResults");
+      results.innerHTML = "";
+      try {
+        const matches = await findOptOutMatches({ email: lead.email, phone: lead.phone, websiteUrl: lead.website_url });
+        if (!matches.length) {
+          results.innerHTML = '<p class="empty visible">No suppression list matches. This lead can be contacted in a later phase.</p>';
+          return;
+        }
+        results.innerHTML = `<p class="notice error">This contact is on the permanent suppression list and must never be contacted.</p>` +
+          `<div class="meta-list">${matches.map((entry) => `
+            <div class="meta-row"><span>${html(entry.email || entry.normalized_website_domain || entry.phone || "Match")}</span><strong>${html(entry.reason || entry.source)}</strong></div>
+          `).join("")}</div>`;
+      } catch (error) {
+        results.innerHTML = `<p class="notice error">${html(error.message || "Could not check the suppression list.")}</p>`;
+      }
+    });
+
+    document.getElementById("optOutForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const fields = event.currentTarget.elements;
+      const submitButton = event.currentTarget.querySelector("button[type=submit]");
+      submitButton.disabled = true;
+      setStatus("optOutFormStatus", "Adding to suppression list and updating status...");
+      try {
+        const updated = await optOutLead(lead.id, fields.reason.value.trim() || null, fields.source.value);
+        fillLead(updated);
+        event.currentTarget.reset();
+        await refreshActivity();
+        setStatus("optOutFormStatus", "Added to the permanent suppression list and set to Opted Out.", "success");
+        document.getElementById("checkOptOutBtn").click();
+      } catch (error) {
+        setStatus("optOutFormStatus", error.message || "Could not add to the suppression list.", "error");
+      } finally {
+        submitButton.disabled = false;
+      }
+    });
+
+    document.getElementById("sourceForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const fields = event.currentTarget.elements;
+      setStatus("sourceFormStatus", "Saving source record...");
+      try {
+        await addLeadSource(leadId, {
+          field_name: fields.field_name.value.trim(),
+          field_value: fields.field_value.value.trim(),
+          source_url: fields.source_url.value.trim(),
+          source_type: fields.source_type.value,
+          notes: fields.notes.value.trim() || null,
+        });
+        event.currentTarget.reset();
+        await refreshSources();
+        setStatus("sourceFormStatus", "Source record saved.", "success");
+      } catch (error) {
+        setStatus("sourceFormStatus", error.message || "Could not save source record.", "error");
+      }
+    });
+
+    document.getElementById("noteForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const note = event.currentTarget.elements.note.value.trim();
+      if (!note) return;
+      setStatus("noteStatus", "Saving note...");
+      try {
+        await addLeadNote(leadId, note);
+        event.currentTarget.reset();
+        await refreshActivity();
+        setStatus("noteStatus", "Note saved.", "success");
+      } catch (error) {
+        setStatus("noteStatus", error.message || "Could not save note.", "error");
+      }
+    });
+
+    document.getElementById("convertToCustomerBtn").addEventListener("click", async () => {
+      const button = document.getElementById("convertToCustomerBtn");
+      if (button.disabled) return;
+      button.disabled = true;
+      button.textContent = "Converting...";
+      setStatus("leadActionStatus", "Converting lead to customer...");
+      try {
+        const result = await convertLeadToCustomer(lead.id);
+        const messages = {
+          already_converted: "This lead was already converted to a customer.",
+          existing_customer_matched: "Matched an existing customer by email — no duplicate customer was created.",
+          created: "Converted to a new customer.",
+        };
+        setStatus("leadActionStatus", messages[result.status] || "Converted to customer.", "success");
+        fillLead(await getLead(leadId));
+        await refreshActivity();
+        window.location.href = `customer-detail.html?id=${encodeURIComponent(result.customer_id)}`;
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = "Convert to customer";
+        setStatus("leadActionStatus", error.message || "Could not convert this lead. It may have an ineligible status (Duplicate, Rejected, or Opted Out).", "error");
+      }
+    });
+  </script>
+</body>
+</html>

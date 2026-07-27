@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
+<title>Get a Free Quote — Saltbox Web Design</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  :root{
+    --ink:#0B0F0D;--ink-2:#121815;--salt:#F2EEE4;--salt-dim:#96A199;
+    --line:rgba(242,238,228,.12);--green:#2AE08A;--green-2:#16B86C;
+    --display:"Bricolage Grotesque","Inter",system-ui,sans-serif;
+    --body:"Inter",system-ui,sans-serif;--mono:"Space Mono",ui-monospace,monospace;
+  }
+  html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+  body{min-height:100svh;background:radial-gradient(circle at 76% 18%,rgba(42,224,138,.12),transparent 34%),var(--ink);color:var(--salt);font-family:var(--body);line-height:1.5;}
+  body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.055;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");}
+  .wrap{position:relative;z-index:2;max-width:1120px;margin:0 auto;padding:34px 44px 86px;}
+  .quote-top{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:58px;}
+  .brand{display:flex;align-items:center;gap:11px;color:var(--salt);font-family:var(--display);font-weight:700;font-size:1.35rem;letter-spacing:-.025em;text-decoration:none;}
+  .brand .mark{width:31px;height:31px;border-radius:9px;display:grid;place-items:center;background:linear-gradient(150deg,var(--green),var(--green-2));box-shadow:0 6px 22px rgba(42,224,138,.4);}
+  .brand .mark::after{content:"";width:11px;height:11px;border-radius:3px;background:var(--ink);}
+  .quote-back{color:var(--salt);text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:11px 18px;font-weight:600;font-size:.92rem;transition:.25s;}
+  .quote-back:hover,.quote-back:focus-visible{border-color:var(--green);color:var(--green);outline:none;}
+  .quote-head{max-width:760px;margin-bottom:34px;}
+  .eyebrow{font-family:var(--mono);font-size:.78rem;letter-spacing:.2em;text-transform:uppercase;color:var(--green);display:inline-flex;align-items:center;gap:11px;margin-bottom:24px;}
+  .eyebrow::before{content:"";width:32px;height:1px;background:var(--green);}
+  h1{font-family:var(--display);font-weight:800;letter-spacing:-.04em;line-height:.94;font-size:clamp(2.6rem,5.2vw,4.7rem);}
+  .quote-head p{color:var(--salt-dim);font-size:1.12rem;line-height:1.62;max-width:54ch;margin-top:22px;}
+  .email-tools{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:20px;}
+  .email-link{color:var(--salt);text-decoration:none;}
+  .email-link:hover,.email-link:focus-visible{color:var(--green);outline:none;}
+  .copy-email{border:1px solid var(--line);border-radius:999px;background:transparent;color:var(--salt-dim);padding:7px 11px;font:600 .74rem var(--body);cursor:pointer;transition:border-color .2s,color .2s;}
+  .copy-email:hover,.copy-email:focus-visible{border-color:var(--green);color:var(--salt);outline:none;}
+  .quote-card{background:var(--ink-2);border:1px solid var(--line);border-radius:26px;padding:42px;box-shadow:0 42px 100px -54px rgba(42,224,138,.35);}
+  .quote-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 20px;}
+  .field{margin-bottom:0;}
+  .field.full{grid-column:1/-1;}
+  .field label{display:block;font-family:var(--mono);font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--salt-dim);margin-bottom:8px;}
+  .field input,.field textarea,.field select{width:100%;max-width:100%;background-color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:13px 15px;color:var(--salt);font-family:var(--body);font-size:.98rem;line-height:1.4;transition:border-color .25s;}
+  .field textarea{resize:vertical;}
+  .field input::placeholder,.field textarea::placeholder{color:#5d665f;}
+  .field input:focus,.field textarea:focus,.field select:focus{outline:none;border-color:var(--green);}
+  .field select{padding-right:42px;appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--salt-dim) 50%),linear-gradient(135deg,var(--salt-dim) 50%,transparent 50%);background-position:calc(100% - 20px) 50%,calc(100% - 14px) 50%;background-size:6px 6px,6px 6px;background-repeat:no-repeat;}
+  .quote-actions{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-top:26px;}
+  .btn{display:inline-flex;justify-content:center;border:none;cursor:pointer;font-family:var(--body);font-weight:600;font-size:1rem;border-radius:999px;padding:16px 28px;background:var(--green);color:#06150D;box-shadow:0 12px 34px rgba(42,224,138,.32);}
+  .btn:disabled{opacity:.62;cursor:wait;}
+  .quote-note{color:var(--salt-dim);font-size:.92rem;}
+  .quote-status{display:block;margin-top:16px;color:var(--salt-dim);font-size:.92rem;line-height:1.6;}
+  .quote-status.success{color:var(--green);}
+  .quote-status.error{color:#F2766B;}
+  .quote-status.error a{color:inherit;font-weight:600;}
+  .quote-status .copy-email{margin-left:8px;color:var(--salt);vertical-align:middle;}
+  @media (max-width:720px){
+    .wrap{padding:24px 22px 70px;}
+    .quote-top{margin-bottom:44px;}
+    .quote-back{padding:9px 13px;font-size:.82rem;}
+    .quote-card{padding:28px 22px;border-radius:22px;}
+    .quote-grid{grid-template-columns:1fr;}
+    .field.full{grid-column:auto;}
+    .quote-actions{align-items:stretch;flex-direction:column;}
+    .quote-actions .btn{width:100%;}
+    .quote-note{text-align:center;}
+    .quote-status .copy-email{display:block;margin:10px 0 0;}
+  }
+</style>
+</head>
+<body>
+  <main class="wrap">
+    <header class="quote-top">
+      <a class="brand" href="index.html" aria-label="Saltbox homepage"><span class="mark"></span>Saltbox</a>
+      <a class="quote-back" href="index.html">Back to homepage</a>
+    </header>
+
+    <section aria-labelledby="quote-title">
+      <div class="quote-head">
+        <span class="eyebrow">Free quote</span>
+        <h1 id="quote-title">Tell us about your business.</h1>
+        <p>Answer a few quick questions and we&#39;ll send back a free, no-pressure quote within 48 hours.</p>
+        <div class="email-tools">
+          <a class="email-link" href="mailto:hello@saltboxwebdesign.com">hello@saltboxwebdesign.com</a>
+          <button class="copy-email" type="button" data-copy-email aria-live="polite">Copy email address</button>
+        </div>
+      </div>
+
+      <form class="quote-card" id="quoteForm" name="quote-request" method="POST" data-netlify="true">
+        <input type="hidden" name="form-name" value="quote-request">
+        <div class="quote-grid">
+          <div class="field">
+            <label for="quote-name">Your name</label>
+            <input id="quote-name" name="name" type="text" autocomplete="name" required>
+          </div>
+          <div class="field">
+            <label for="quote-email">Email address</label>
+            <input id="quote-email" name="email" type="email" autocomplete="email" required>
+          </div>
+          <div class="field">
+            <label for="quote-business">Business name</label>
+            <input id="quote-business" name="business-name" type="text" required>
+          </div>
+          <div class="field">
+            <label for="quote-type">What kind of business do you run?</label>
+            <input id="quote-type" name="business-type" type="text" placeholder="Coffee shop, contractor, boutique..." required>
+          </div>
+          <div class="field full">
+            <label for="project_type">Do you need a brand-new website, a redesign, or help with an existing site?</label>
+            <select id="project_type" name="project_type" required>
+              <option value="">Select one</option>
+              <option>Brand-new website</option>
+              <option>Website redesign</option>
+              <option>Help with an existing site</option>
+              <option>Not sure yet</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="package_interest">Which package are you most interested in?</label>
+            <select id="package_interest" name="package_interest">
+              <option>Not sure yet</option>
+              <option>Starter</option>
+              <option>Standard</option>
+              <option>Custom</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="care_plan_interest">Do you want monthly care after launch?</label>
+            <select id="care_plan_interest" name="care_plan_interest">
+              <option>Not sure yet</option>
+              <option>Starter Care &mdash; $75/month</option>
+              <option>Standard Care &mdash; $150/month</option>
+              <option>Growth Care &mdash; $300+/month</option>
+              <option>No</option>
+            </select>
+          </div>
+          <div class="field full">
+            <label for="features_needed">What pages or features do you need?</label>
+            <textarea id="features_needed" name="features_needed" rows="4" placeholder="Services, gallery, booking, online store, menu, contact form..."></textarea>
+          </div>
+          <div class="field">
+            <label for="ideal_timeline">What is your ideal timeline?</label>
+            <select id="ideal_timeline" name="ideal_timeline">
+              <option>ASAP</option>
+              <option>2&ndash;4 weeks</option>
+              <option>1&ndash;2 months</option>
+              <option>3+ months</option>
+              <option>Not sure yet</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="quote-notes">Anything else we should know?</label>
+            <textarea id="quote-notes" name="notes" rows="3"></textarea>
+          </div>
+        </div>
+        <div class="quote-actions">
+          <button class="btn" id="quoteSubmit" type="submit">Send my quote request</button>
+          <span class="quote-note">No pressure, no spam &mdash; just a real quote.</span>
+        </div>
+        <div class="quote-status" id="quoteStatus" role="status" aria-live="polite"></div>
+      </form>
+    </section>
+  </main>
+
+<script type="module">
+import { supabase, supabaseReady } from "./supabase-client.js";
+
+const EMAIL = "hello@saltboxwebdesign.com";
+const quoteForm = document.getElementById("quoteForm");
+const quoteSubmit = document.getElementById("quoteSubmit");
+const quoteStatus = document.getElementById("quoteStatus");
+
+function setQuoteStatus(message, state = "") {
+  quoteStatus.textContent = message;
+  quoteStatus.className = `quote-status ${state}`.trim();
+}
+
+async function copyEmail(button) {
+  let copied = false;
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(EMAIL);
+      copied = true;
+    } else {
+      const field = document.createElement("textarea");
+      field.value = EMAIL;
+      field.setAttribute("readonly", "");
+      field.style.position = "fixed";
+      field.style.opacity = "0";
+      document.body.appendChild(field);
+      field.select();
+      copied = document.execCommand("copy");
+      field.remove();
+    }
+  } catch (error) {
+    console.error("Email copy failed:", error);
+  }
+
+  if (!copied) {
+    window.prompt("Copy email address:", EMAIL);
+    return;
+  }
+
+  const original = button.textContent;
+  button.textContent = "Copied";
+  window.setTimeout(() => {
+    button.textContent = original;
+  }, 1800);
+}
+
+function setQuoteFailure() {
+  quoteStatus.textContent = "Something went wrong. Email us at ";
+  quoteStatus.className = "quote-status error";
+
+  const emailLink = document.createElement("a");
+  emailLink.href = `mailto:${EMAIL}`;
+  emailLink.textContent = EMAIL;
+
+  const copyButton = document.createElement("button");
+  copyButton.type = "button";
+  copyButton.className = "copy-email";
+  copyButton.dataset.copyEmail = "";
+  copyButton.textContent = "Copy Email";
+  copyButton.setAttribute("aria-live", "polite");
+
+  quoteStatus.append(emailLink, ".", copyButton);
+}
+
+document.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-copy-email]");
+  if (button) copyEmail(button);
+});
+
+quoteForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!quoteForm.reportValidity()) return;
+
+  quoteSubmit.disabled = true;
+  quoteSubmit.textContent = "Sending...";
+  setQuoteStatus("Sending your request...");
+
+  const fields = quoteForm.elements;
+  const payload = {
+    name: fields.name.value.trim(),
+    email: fields.email.value.trim(),
+    business_name: fields["business-name"].value.trim(),
+    business_type: fields["business-type"].value.trim(),
+    project_type: fields.project_type.value,
+    package_interest: fields.package_interest.value,
+    care_plan_interest: fields.care_plan_interest.value,
+    features_needed: fields.features_needed.value.trim(),
+    ideal_timeline: fields.ideal_timeline.value,
+    notes: fields.notes.value.trim(),
+  };
+
+  try {
+    if (!supabaseReady) throw new Error("Supabase is not configured.");
+    const { error } = await supabase.from("quote_requests").insert(payload);
+    if (error) throw error;
+    quoteForm.reset();
+    setQuoteStatus("Thanks! Your quote request was sent successfully. We’ll be in touch within 48 hours.", "success");
+  } catch (error) {
+    console.error("Supabase quote request insert failed:", error);
+    setQuoteFailure();
+  } finally {
+    quoteSubmit.disabled = false;
+    quoteSubmit.textContent = "Send my quote request";
+  }
+});
+</script>
+</body>
+</html>

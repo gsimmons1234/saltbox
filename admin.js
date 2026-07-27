@@ -143,6 +143,17 @@ function redirectToLogin() {
   window.location.replace("login.html");
 }
 
+// Used only when a session exists but fails the is_admin() check — sending
+// a signed-in non-admin (e.g. a customer-portal user who navigated to an
+// admin URL) back to login.html would loop forever, since login.html itself
+// sends an existing session straight to admin.html. client-dashboard.html is
+// the correct, neutral destination for a signed-in-but-not-admin session; it
+// does not sign the user out, so an unrelated customer-portal session in the
+// same browser is left intact.
+function redirectNonAdminAway() {
+  window.location.replace("client-dashboard.html");
+}
+
 export async function initAdminPage(activePage) {
   document.querySelectorAll("[data-page]").forEach((item) => {
     item.classList.toggle("active", item.dataset.page === activePage);
@@ -162,6 +173,23 @@ export async function initAdminPage(activePage) {
     console.error("Admin auth guard session check failed:", error || new Error("No active Supabase session"));
     redirectToLogin();
     return { supabase, session: null, error, redirecting: true };
+  }
+
+  // A valid Supabase session only proves the visitor is signed in — it does
+  // not prove they are an admin. Customer-portal users authenticate through
+  // the same Supabase project, so a signed-in non-admin (e.g. a customer who
+  // navigates to an admin URL by mistake) must be denied here, before any
+  // admin content renders or any page-specific query runs. This call must
+  // not sign the visitor out: doing so would also destroy an unrelated,
+  // legitimate customer-portal session in the same browser. RLS (is_admin()
+  // on every admin table's policies) remains the final security boundary
+  // regardless of this check — this only prevents the admin UI itself from
+  // rendering for a non-admin.
+  const { data: isAdmin, error: isAdminError } = await supabase.rpc("is_admin");
+  if (isAdminError || !isAdmin) {
+    console.error("Admin authorization check failed:", isAdminError || new Error("Signed-in user is not an admin."));
+    redirectNonAdminAway();
+    return { supabase, session: null, error: isAdminError || new Error("Not authorized"), redirecting: true };
   }
 
   document.querySelectorAll("[data-session-email]").forEach((node) => {

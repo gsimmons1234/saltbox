@@ -97,6 +97,7 @@ tbody tr[data-href] { cursor: pointer; }
 .progress { color: var(--amber); background: rgba(233,178,76,.12); }
 .won, .active { color: var(--green); background: rgba(42,224,138,.12); }
 .closed { color: var(--salt-dim); background: rgba(150,161,153,.12); }
+.danger { color: var(--red); background: rgba(242,118,107,.12); }
 .empty { display: none; padding: 17px 21px; color: var(--salt-dim); font-size: .85rem; }
 .empty.visible { display: block; }
 .table-state td { color: var(--salt-dim); white-space: normal; }

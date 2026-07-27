@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <title>Leads - Saltbox Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" aria-label="Admin navigation">
+      <a class="brand" href="index.html" aria-label="Saltbox home"><span class="mark" aria-hidden="true"></span>Saltbox</a>
+      <p class="preview-label">Admin</p>
+      <nav aria-label="Admin pages">
+        <ul class="nav-list">
+          <li><a class="nav-item" data-page="dashboard" href="admin.html">Dashboard</a></li>
+          <li><a class="nav-item" data-page="requests" href="requests.html">Requests</a></li>
+          <li><a class="nav-item" data-page="leads" href="leads.html">Leads</a></li>
+          <li><a class="nav-item" data-page="tickets" href="tickets.html">Tickets</a></li>
+          <li><a class="nav-item" data-page="customers" href="customers.html">Customers</a></li>
+          <li><a class="nav-item" data-page="subscriptions" href="subscriptions.html">Subscriptions</a></li>
+          <li><a class="nav-item" data-page="settings" href="settings.html">Settings</a></li>
+        </ul>
+      </nav>
+      <div class="sidebar-footer"><a class="back-link" href="index.html">Back to site</a></div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div><div class="page-kicker">Lead Engine</div><h1>Leads</h1><p class="page-subtitle">Prospective clients found or entered before they become a quote request or customer.</p></div>
+        <div class="top-actions">
+          <label class="search"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="leadSearch" type="search" placeholder="Search leads" aria-label="Search leads"></label>
+          <span class="session-email" data-session-email></span>
+          <button class="logout-btn" data-logout type="button">Log out</button>
+        </div>
+      </header>
+
+      <article class="panel">
+        <header class="panel-head">
+          <div><h2 class="panel-title">All leads</h2><p class="panel-subtitle" id="leadCount">Loading from Supabase</p></div>
+          <button class="button-link primary" id="createLeadToggle" type="button">Add lead</button>
+        </header>
+
+        <form class="form-panel" id="createLeadForm" hidden>
+          <div class="form-grid">
+            <div class="field"><label for="newBusinessName">Business name</label><input id="newBusinessName" name="business_name" type="text" required></div>
+            <div class="field"><label for="newContactName">Contact name</label><input id="newContactName" name="contact_name" type="text"></div>
+            <div class="field"><label for="newEmail">Email</label><input id="newEmail" name="email" type="email"></div>
+            <div class="field"><label for="newPhone">Phone</label><input id="newPhone" name="phone" type="tel"></div>
+            <div class="field"><label for="newWebsiteUrl">Website (leave blank if none)</label><input id="newWebsiteUrl" name="website_url" type="text" placeholder="e.g. example.com"></div>
+            <div class="field"><label for="newCategory">Category</label><input id="newCategory" name="category" type="text" placeholder="e.g. HVAC contractor"></div>
+            <div class="field"><label for="newCity">City</label><input id="newCity" name="city" type="text"></div>
+            <div class="field"><label for="newState">State</label><input id="newState" name="state" type="text"></div>
+          </div>
+          <p class="notice" id="createLeadWarning" hidden></p>
+          <div class="button-row" style="margin-top:16px;">
+            <button class="button-link primary" id="createLeadSubmit" type="submit">Save lead</button>
+            <button class="button-link" id="cancelCreateLead" type="button">Cancel</button>
+          </div>
+          <p class="form-status" id="createLeadStatus" role="status" aria-live="polite"></p>
+        </form>
+
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Business</th><th>Contact</th><th>Website</th><th>City</th><th>Status</th><th>Fit score</th><th>Created</th><th></th></tr></thead>
+            <tbody id="leadsBody"><tr class="table-state"><td colspan="8">Loading leads...</td></tr></tbody>
+          </table>
+        </div>
+        <p class="empty" id="leadsEmpty">No leads yet. Use "Add lead" to enter one manually.</p>
+      </article>
+    </main>
+  </div>
+
+  <script type="module">
+    import { bindTableSearch, formatDate, html, initAdminPage, setTableState } from "./admin.js";
+    import {
+      createLead,
+      findDuplicateLeads,
+      findOptOutMatches,
+      getLeads,
+      leadDetailUrl,
+      leadStatusClass,
+    } from "./leads.js";
+
+    const admin = await initAdminPage("leads");
+    const body = document.getElementById("leadsBody");
+    const empty = document.getElementById("leadsEmpty");
+    const count = document.getElementById("leadCount");
+    const form = document.getElementById("createLeadForm");
+    const status = document.getElementById("createLeadStatus");
+    const warning = document.getElementById("createLeadWarning");
+    const submitButton = document.getElementById("createLeadSubmit");
+
+    bindTableSearch(document.getElementById("leadSearch"), body, empty, "No leads yet. Use \"Add lead\" to enter one manually.");
+
+    let pendingConfirm = false;
+
+    function resetCreateForm() {
+      form.reset();
+      warning.hidden = true;
+      warning.className = "notice";
+      status.textContent = "";
+      status.className = "form-status";
+      submitButton.textContent = "Save lead";
+      pendingConfirm = false;
+    }
+
+    document.getElementById("createLeadToggle").addEventListener("click", () => {
+      form.hidden = false;
+      document.getElementById("newBusinessName").focus();
+    });
+
+    document.getElementById("cancelCreateLead").addEventListener("click", () => {
+      form.hidden = true;
+      resetCreateForm();
+    });
+
+    function leadRow(row) {
+      // Runtime guarantee, not just a static-code assumption: every rendered
+      // row must carry a real lead id, since that id is the only thing that
+      // makes lead-detail?id=... work. If a row somehow lacks one
+      // (a malformed query result, a stale/partial object, etc.), render a
+      // controlled error cell instead of a link that would silently open
+      // lead-detail with no id at all.
+      console.assert(row.id, "Lead row is missing id", row);
+      if (!row.id) {
+        return `
+          <tr class="table-state error">
+            <td colspan="8">${html(row.business_name || "This lead")} is missing its id and cannot be opened.</td>
+          </tr>
+        `;
+      }
+
+      const href = leadDetailUrl(row.id);
+      const fitScore = row.fit_score === null || row.fit_score === undefined ? "&mdash;" : html(row.fit_score);
+      return `
+        <tr data-lead-id="${html(row.id)}" data-search-text="${html([row.business_name, row.contact_name, row.email, row.normalized_website_domain, row.city, row.category, row.status].join(" ").toLowerCase())}">
+          <td class="entity"><a class="row-link" href="${href}">${html(row.business_name || "Unnamed")}</a></td>
+          <td>${html(row.contact_name || row.email || "-")}</td>
+          <td>${row.has_website ? html(row.normalized_website_domain || row.website_url || "-") : "No website"}</td>
+          <td>${html(row.city || "-")}</td>
+          <td><span class="status ${leadStatusClass(row.status)}">${html(row.status || "Discovered")}</span></td>
+          <td>${fitScore}</td>
+          <td class="muted">${formatDate(row.created_at)}</td>
+          <td><a class="row-link" href="${href}">Open</a></td>
+        </tr>
+      `;
+    }
+
+    function renderLeads(rows) {
+      count.textContent = `${rows.length} lead${rows.length === 1 ? "" : "s"}`;
+      if (!rows.length) {
+        body.innerHTML = "";
+        empty.classList.add("visible");
+        return;
+      }
+      empty.classList.remove("visible");
+      body.innerHTML = rows.map(leadRow).join("");
+    }
+
+    // Row-click navigation is delegated from the tbody, but must never fight
+    // with a click that landed on an anchor (or button/input/select/etc.)
+    // inside the row: those elements handle their own navigation/behavior
+    // natively. stopPropagation() on the interactive-element branch keeps
+    // this same delegated handler from also trying to act on that click, and
+    // the early return means the row-level "navigate the whole row" branch
+    // below never runs for it. When it does run, it recomputes the URL fresh
+    // from the row's actual id (data-lead-id) through the shared helper,
+    // rather than trusting any precomputed/cached href string.
+    body.addEventListener("click", (event) => {
+      const interactiveEl = event.target.closest("a, button, input, select, textarea, label");
+      if (interactiveEl) {
+        event.stopPropagation();
+        return;
+      }
+
+      const row = event.target.closest("tr[data-lead-id]");
+      if (!row) return;
+
+      const leadId = row.dataset.leadId;
+      console.assert(leadId, "Row click navigation is missing a lead id", row);
+      if (!leadId) return;
+
+      window.location.href = leadDetailUrl(leadId);
+    });
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const fields = form.elements;
+      const values = {
+        business_name: fields.business_name.value.trim(),
+        contact_name: fields.contact_name.value.trim() || null,
+        email: fields.email.value.trim() || null,
+        phone: fields.phone.value.trim() || null,
+        website_url: fields.website_url.value.trim() || null,
+        category: fields.category.value.trim() || null,
+        city: fields.city.value.trim() || null,
+        state: fields.state.value.trim() || null,
+      };
+
+      if (!values.business_name) {
+        status.textContent = "Business name is required.";
+        status.className = "form-status error";
+        return;
+      }
+
+      submitButton.disabled = true;
+      status.textContent = pendingConfirm ? "Creating lead anyway..." : "Checking for duplicates and suppression matches...";
+      status.className = "form-status";
+
+      try {
+        if (!pendingConfirm) {
+          const [{ hardMatches, fuzzyMatches }, optOutMatches] = await Promise.all([
+            findDuplicateLeads({
+              businessName: values.business_name,
+              city: values.city,
+              email: values.email,
+              phone: values.phone,
+              websiteUrl: values.website_url,
+            }),
+            findOptOutMatches({ email: values.email, phone: values.phone, websiteUrl: values.website_url }),
+          ]);
+
+          if (hardMatches.length) {
+            const links = hardMatches
+              .map((match) => {
+                console.assert(match.lead.id, "Duplicate match is missing lead id", match);
+                return `<a class="row-link" href="${leadDetailUrl(match.lead.id)}">${html(match.lead.business_name)}</a> (matched on ${html(match.reasons.join(", "))})`;
+              })
+              .join("; ");
+            warning.innerHTML = `This looks like a duplicate: ${links}. Open the existing lead instead, or change the email/phone/website before saving.`;
+            warning.className = "notice error";
+            warning.hidden = false;
+            status.textContent = "";
+            submitButton.disabled = false;
+            return;
+          }
+
+          if (fuzzyMatches.length || optOutMatches.length) {
+            const parts = [];
+            if (fuzzyMatches.length) {
+              const links = fuzzyMatches
+                .map((match) => {
+                  console.assert(match.lead.id, "Fuzzy match is missing lead id", match);
+                  return `<a class="row-link" href="${leadDetailUrl(match.lead.id)}">${html(match.lead.business_name)}</a>`;
+                })
+                .join(", ");
+              parts.push(`Possibly similar existing leads: ${links}.`);
+            }
+            if (optOutMatches.length) {
+              parts.push("This contact matches an entry on the permanent suppression list. The lead can still be recorded, but it must never be contacted.");
+            }
+            warning.innerHTML = parts.join(" ");
+            warning.className = optOutMatches.length ? "notice error" : "notice";
+            warning.hidden = false;
+            status.textContent = "";
+            status.className = "form-status";
+            submitButton.textContent = "Create anyway";
+            submitButton.disabled = false;
+            pendingConfirm = true;
+            return;
+          }
+        }
+
+        const lead = await createLead(values);
+        console.assert(lead && lead.id, "Created lead is missing id", lead);
+        if (!lead || !lead.id) {
+          status.textContent = "Lead created, but its id was missing so it could not be opened automatically. Refresh the list to find it.";
+          status.className = "form-status error";
+          submitButton.disabled = false;
+          return;
+        }
+        status.textContent = "Lead created.";
+        status.className = "form-status success";
+        window.location.href = leadDetailUrl(lead.id);
+      } catch (error) {
+        status.textContent = error.message || "Could not create lead.";
+        status.className = "form-status error";
+        submitButton.disabled = false;
+      }
+    });
+
+    if (!admin.redirecting && admin.configError) {
+      setTableState(body, admin.configError, true, 8);
+      count.textContent = "Unavailable";
+    } else if (!admin.redirecting) {
+      try {
+        renderLeads(await getLeads());
+      } catch (error) {
+        setTableState(body, error.message || "Could not load leads.", true, 8);
+        count.textContent = "Supabase query failed";
+      }
+    }
+  </script>
+</body>
+</html>

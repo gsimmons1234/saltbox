@@ -101,7 +101,22 @@
       setStatus(supabaseConfigError, "error");
     } else {
       const { data } = await supabase.auth.getSession();
-      if (data.session) window.location.replace(redirectTo);
+      if (data.session) {
+        // A session existing only proves the visitor is signed in, not that
+        // they're an admin — customers authenticate through the same
+        // Supabase project. Redirecting straight to admin.html here without
+        // checking is_admin() is what caused the loop: admin.js would then
+        // bounce a non-admin session back to this page, which would bounce
+        // it straight back to admin.html again. Signed-in admins still go
+        // to admin.html; anyone else goes to their customer dashboard
+        // instead, and is never signed out in the process.
+        const { data: isAdmin, error: isAdminError } = await supabase.rpc("is_admin");
+        if (!isAdminError && isAdmin) {
+          window.location.replace(redirectTo);
+        } else {
+          window.location.replace("client-dashboard.html");
+        }
+      }
     }
 
     form.addEventListener("submit", async (event) => {
