@@ -25,7 +25,7 @@ Top-level files:
 - `supabase-lead-engine-schema.sql` - Lead Engine Phase 1 schema (leads, lead_sources, outreach_opt_outs, lead_activity_log) — written but NOT yet run in Supabase
 - `leads.js` - Lead Engine data module: CRUD, status transitions, duplicate detection, suppression checks, lead-to-customer conversion
 - `leads.html` - Lead Engine list/search/manual-entry admin page
-- `lead-detail.html` - Lead Engine detail page: overview edit, status transitions, scoring, duplicate check, source records, suppression, activity log, convert to customer
+- `lead-detail.html` - Lead Engine detail page: overview edit, manual qualification, activity evidence, status transitions, duplicate check, source records, suppression, activity log, convert to customer
 - `package.json` - Netlify Function dependencies
 
 Netlify Functions:
@@ -128,7 +128,7 @@ Storage:
 
 ## Lead Engine (Phase 1)
 
-Phase 1 of the assisted client-discovery/outreach system: manual lead entry, review, scoring, status tracking, duplicate detection, permanent suppression, and lead-to-customer conversion. No automated research, mockup generation, screenshotting, or email sending exists yet — those are Phases 2-5 and are not built.
+Phase 1 of the assisted client-discovery/outreach system: manual lead entry, review, qualification, status tracking, duplicate detection, permanent suppression, and lead-to-customer conversion. Qualification is a manual decision represented by `Needs Review`, `Approved for Mockup`, or `Rejected`; there is no active numeric lead-scoring workflow. The existing nullable `fit_score` and `fit_score_reasoning` database columns are unused and deferred, and the Phase 1 UI does not display, require, or write them. No automated research, mockup generation, screenshotting, or email sending exists yet — those are Phases 2-5 and are not built.
 
 This section was substantially revised after a read-only security audit found release-blocking gaps in the first pass (browser-trusted normalization, a client-only transition "guard" that the database didn't actually enforce, a directly-writable activity log, non-atomic opt-out/duplicate/conversion flows, unsanitized link rendering, and an admin page guard that only checked for *a* session rather than an *admin* session). Everything below describes the corrected, current implementation — not the original one.
 

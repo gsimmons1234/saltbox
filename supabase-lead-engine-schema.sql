@@ -203,31 +203,33 @@ as $$
   );
 $$;
 
--- Canonical Phase 1-5 status transition matrix. This is the single source
--- of truth on the database side; leads.js keeps its own copy for fast
--- client-side UI filtering, but that copy is advisory only — this function
--- (via the trigger below) is what actually gets enforced.
+-- Canonical admin-managed status transition matrix. Normal workflow and
+-- outcome statuses can move directly to any other normal status. Opted Out
+-- remains terminal, and entry into Opted Out or Duplicate is still restricted
+-- to its dedicated RPC by leads_validate_status_transition().
 create or replace function public.lead_status_transitions(p_status text)
 returns text[]
 language sql
 immutable
 as $$
-  select case p_status
-    when 'Discovered' then array['Needs Review', 'Duplicate', 'Rejected', 'Opted Out']
-    when 'Needs Review' then array['Approved for Mockup', 'Duplicate', 'Rejected', 'Opted Out']
-    when 'Approved for Mockup' then array['Mockup In Progress', 'Rejected', 'Opted Out']
-    when 'Mockup In Progress' then array['Draft Ready', 'Rejected', 'Opted Out']
-    when 'Draft Ready' then array['Approved to Send', 'Rejected', 'Opted Out']
-    when 'Approved to Send' then array['Contacted', 'Rejected', 'Opted Out']
-    when 'Contacted' then array['Replied', 'Follow-up Due', 'Rejected', 'Opted Out']
-    when 'Replied' then array['Follow-up Due', 'Rejected', 'Opted Out']
-    when 'Follow-up Due' then array['Contacted', 'Rejected', 'Opted Out']
-    when 'Rejected' then array['Needs Review']
+  select case
     -- Opted Out is terminal in Phase 1: there is no reopen/suppression-lift
     -- workflow. A lead can still be *edited* while Opted Out (its identity
     -- fields), but it can never change status again.
-    when 'Opted Out' then array[]::text[]
-    when 'Duplicate' then array['Needs Review']
+    when p_status = 'Opted Out' then array[]::text[]
+    when p_status = 'Duplicate' then array[
+      'Discovered', 'Needs Review', 'Approved for Mockup', 'Mockup In Progress',
+      'Draft Ready', 'Approved to Send', 'Contacted', 'Follow-up Due', 'Replied', 'Rejected'
+    ]
+    when p_status = any(array[
+      'Discovered', 'Needs Review', 'Approved for Mockup', 'Mockup In Progress',
+      'Draft Ready', 'Approved to Send', 'Contacted', 'Follow-up Due', 'Replied', 'Rejected'
+    ])
+    then array_remove(array[
+      'Discovered', 'Needs Review', 'Approved for Mockup', 'Mockup In Progress',
+      'Draft Ready', 'Approved to Send', 'Contacted', 'Follow-up Due', 'Replied', 'Rejected',
+      'Opted Out', 'Duplicate'
+    ], p_status)
     else array[]::text[]
   end;
 $$;
@@ -1146,9 +1148,9 @@ $$;
 -- else, already status Duplicate, or permanently suppressed — none of
 -- those are safe canonical leads to point at), then updates duplicate_of
 -- and status together (status is separately validated by
--- leads_validate_status_transition, which only allows
--- Discovered/Needs Review -> Duplicate — an illegal attempt raises inside
--- this function and rolls back the whole call), then records a trusted
+-- leads_validate_status_transition, which allows entry to Duplicate from any
+-- normal admin-managed status only when this trusted RPC sets its guarded
+-- write flag), then records a trusted
 -- activity entry. duplicate_of is protected from any other write path by
 -- leads_protect_restricted_columns; set_config('saltbox.trusted_write', ...)
 -- below is what authorizes this specific, validated write.

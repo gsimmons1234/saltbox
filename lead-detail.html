@@ -81,7 +81,7 @@
                 <select id="statusSelect" name="status"></select>
               </div>
               <div class="field" style="margin-top:12px;">
-                <label for="statusDetail">Reason / detail (required when rejecting or opting out)</label>
+                <label for="statusDetail">Reason / detail (required when rejecting)</label>
                 <textarea id="statusDetail" name="detail" placeholder="Why is this status changing?"></textarea>
               </div>
               <div class="button-row" style="margin-top:16px;"><button class="button-link primary" type="submit">Change status</button></div>
@@ -91,12 +91,10 @@
         </article>
 
         <article class="panel">
-          <header class="panel-head"><div><h2 class="panel-title">Scoring &amp; activity</h2><p class="panel-subtitle">Manual fit assessment (Phase 1 — entered by hand)</p></div></header>
+          <header class="panel-head"><div><h2 class="panel-title">Qualification &amp; activity</h2><p class="panel-subtitle">Qualify with Needs Review, Approved for Mockup, or Rejected; record supporting evidence here.</p></div></header>
           <div class="panel-body">
-            <form id="scoringForm">
+            <form id="activityForm">
               <div class="form-grid">
-                <div class="field"><label for="fit_score">Fit score (0-100)</label><input id="fit_score" name="fit_score" type="number" min="0" max="100" step="1"></div>
-                <div class="field full"><label for="fit_score_reasoning">Fit score reasoning</label><textarea id="fit_score_reasoning" name="fit_score_reasoning" placeholder="Cite what you observed, not assumptions."></textarea></div>
                 <div class="field full"><label for="activity_confirmed">Business appears active</label>
                   <label style="display:flex;align-items:center;gap:9px;font-family:var(--body);font-size:.9rem;color:var(--salt);font-weight:400;text-transform:none;letter-spacing:0;">
                     <input id="activity_confirmed" name="activity_confirmed" type="checkbox" style="width:auto;"> Confirmed active based on evidence below
@@ -104,8 +102,8 @@
                 </div>
                 <div class="field full"><label for="activity_confirmed_notes">Activity evidence notes</label><textarea id="activity_confirmed_notes" name="activity_confirmed_notes" placeholder="e.g. recent posts, current hours listed, reviews within the last few months"></textarea></div>
               </div>
-              <div class="button-row" style="margin-top:16px;"><button class="button-link primary" type="submit">Save scoring</button></div>
-              <p class="form-status" id="scoringStatus" role="status" aria-live="polite"></p>
+              <div class="button-row" style="margin-top:16px;"><button class="button-link primary" type="submit">Save activity evidence</button></div>
+              <p class="form-status" id="activityStatus" role="status" aria-live="polite"></p>
             </form>
           </div>
         </article>
@@ -198,8 +196,8 @@
     import {
       addLeadNote,
       addLeadSource,
+      LEAD_STATUSES,
       allowedNextStatuses,
-      allowedNextStatusesForDropdown,
       changeLeadStatus,
       convertLeadToCustomer,
       findDuplicateLeads,
@@ -226,10 +224,6 @@
       node.className = `form-status ${state}`.trim();
     }
 
-    function numberOrNull(value) {
-      return value === "" || value === null || value === undefined ? null : Number(value);
-    }
-
     function renderLink(rawUrl, label) {
       const safe = sanitizeUrl(rawUrl);
       if (!safe) return html(label ?? rawUrl ?? "");
@@ -238,16 +232,66 @@
 
     function populateStatusSelect() {
       const select = document.getElementById("statusSelect");
-      const options = allowedNextStatusesForDropdown(lead.status);
-      if (!options.length) {
-        select.innerHTML = "";
-        select.disabled = true;
-        document.querySelector("#statusForm button[type=submit]").disabled = true;
+      const submitButton = document.querySelector("#statusForm button[type=submit]");
+      const legalStatuses = new Set(allowedNextStatuses(lead.status));
+      const isConverted = Boolean(lead.converted_customer_id);
+      let firstEnabledStatus = null;
+
+      select.innerHTML = LEAD_STATUSES.map((status) => {
+        let label = status;
+        let disabled = false;
+
+        if (status === lead.status) {
+          label = `${status} — Current`;
+          disabled = true;
+        } else if (isConverted) {
+          label = `${status} — unavailable after conversion`;
+          disabled = true;
+        } else if (status === "Opted Out") {
+          label = "Opted Out — use Opt Out action";
+          disabled = !legalStatuses.has(status);
+        } else if (status === "Duplicate") {
+          label = "Duplicate — use Mark Duplicate action";
+          disabled = !legalStatuses.has(status);
+        } else if (!legalStatuses.has(status)) {
+          label = `${status} — unavailable from current status`;
+          disabled = true;
+        } else if (!firstEnabledStatus) {
+          firstEnabledStatus = status;
+        }
+
+        return `<option value="${html(status)}"${disabled ? " disabled" : ""}${status === firstEnabledStatus ? " selected" : ""}>${html(label)}</option>`;
+      }).join("");
+
+      select.disabled = !firstEnabledStatus;
+      submitButton.disabled = !firstEnabledStatus;
+      handleStatusSelection();
+    }
+
+    function handleStatusSelection() {
+      const select = document.getElementById("statusSelect");
+      const detail = document.getElementById("statusDetail");
+      const submitButton = document.querySelector("#statusForm button[type=submit]");
+      detail.required = select.value === "Rejected";
+
+      if (select.value === "Opted Out") {
+        submitButton.disabled = true;
+        setStatus("statusFormStatus", "Use the dedicated Opt Out action below to create permanent suppression.", "");
+        document.getElementById("optOutForm").scrollIntoView({ behavior: "smooth", block: "center" });
+        document.getElementById("optOutReason").focus({ preventScroll: true });
         return;
       }
-      select.disabled = false;
-      document.querySelector("#statusForm button[type=submit]").disabled = false;
-      select.innerHTML = options.map((value) => `<option value="${html(value)}">${html(value)}</option>`).join("");
+
+      if (select.value === "Duplicate") {
+        submitButton.disabled = true;
+        setStatus("statusFormStatus", "Use the dedicated duplicate check and Mark Duplicate action below.", "");
+        document.getElementById("duplicateResults").scrollIntoView({ behavior: "smooth", block: "center" });
+        document.getElementById("checkDuplicatesBtn").focus({ preventScroll: true });
+        return;
+      }
+
+      setStatus("statusFormStatus", "", "");
+      submitButton.disabled = select.disabled || !select.value || select.selectedOptions[0]?.disabled;
     }
 
     function fillLead(row) {
@@ -261,8 +305,6 @@
         if (input) input.value = row[field] || "";
       });
 
-      document.getElementById("fit_score").value = row.fit_score === null || row.fit_score === undefined ? "" : row.fit_score;
-      document.getElementById("fit_score_reasoning").value = row.fit_score_reasoning || "";
       document.getElementById("activity_confirmed").checked = Boolean(row.activity_confirmed);
       document.getElementById("activity_confirmed_notes").value = row.activity_confirmed_notes || "";
 
@@ -341,11 +383,14 @@
       }));
     }
 
-    async function refreshActivity() {
-      renderActivity(await getActivityLog(leadId).catch((error) => {
+    async function refreshActivity(throwOnError = false) {
+      const rows = await getActivityLog(leadId).catch((error) => {
         document.getElementById("activityList").innerHTML = `<p class="empty visible">${html(error.message || "Could not load activity log.")}</p>`;
+        if (throwOnError) throw error;
         return [];
-      }));
+      });
+      renderActivity(rows);
+      return rows;
     }
 
     if (!admin.redirecting && !leadId) {
@@ -390,49 +435,63 @@
       }
     });
 
-    document.getElementById("scoringForm").addEventListener("submit", async (event) => {
+    document.getElementById("activityForm").addEventListener("submit", async (event) => {
       event.preventDefault();
       const fields = event.currentTarget.elements;
-      const score = numberOrNull(fields.fit_score.value);
-      if (score !== null && (score < 0 || score > 100)) {
-        setStatus("scoringStatus", "Fit score must be between 0 and 100.", "error");
-        return;
-      }
-      setStatus("scoringStatus", "Saving...");
+      setStatus("activityStatus", "Saving...");
       try {
         const updated = await updateLead(leadId, {
-          fit_score: score,
-          fit_score_reasoning: fields.fit_score_reasoning.value.trim() || null,
           activity_confirmed: fields.activity_confirmed.checked,
           activity_confirmed_notes: fields.activity_confirmed_notes.value.trim() || null,
         });
         fillLead(updated);
-        setStatus("scoringStatus", "Saved.", "success");
+        setStatus("activityStatus", "Saved.", "success");
       } catch (error) {
-        setStatus("scoringStatus", error.message || "Could not save scoring.", "error");
+        setStatus("activityStatus", error.message || "Could not save activity evidence.", "error");
       }
     });
 
+    document.getElementById("statusSelect").addEventListener("change", handleStatusSelection);
+
     document.getElementById("statusForm").addEventListener("submit", async (event) => {
       event.preventDefault();
-      const fields = event.currentTarget.elements;
+      const statusForm = event.currentTarget;
+      const fields = statusForm.elements;
+      const submitButton = statusForm.querySelector("button[type=submit]");
+      const detailField = fields.detail;
       const newStatus = fields.status.value;
-      const detail = fields.detail.value.trim();
+      const detail = detailField.value.trim();
 
       if (newStatus === "Rejected" && !detail) {
         setStatus("statusFormStatus", "Add a reason before rejecting this lead.", "error");
         return;
       }
 
+      submitButton.disabled = true;
       setStatus("statusFormStatus", "Updating status...");
+
+      let updated;
       try {
-        const updated = await changeLeadStatus(lead, newStatus, { detail: detail || null });
-        fillLead(updated);
-        event.currentTarget.reset();
-        await refreshActivity();
-        setStatus("statusFormStatus", `Status changed to ${newStatus}.`, "success");
+        updated = await changeLeadStatus(lead, newStatus, { detail: detail || null });
       } catch (error) {
         setStatus("statusFormStatus", error.message || "Could not change status.", "error");
+        submitButton.disabled = false;
+        return;
+      }
+
+      try {
+        fillLead(updated);
+        statusForm.reset();
+        detailField.value = "";
+        handleStatusSelection();
+        submitButton.disabled = true;
+        await refreshActivity();
+        setStatus("statusFormStatus", `Status changed to ${newStatus}.`, "success");
+      } catch (uiError) {
+        console.error("Status changed, but the page could not finish refreshing:", uiError);
+        setStatus("statusFormStatus", `Status changed to ${newStatus}. Refresh the page if the latest activity is not visible.`, "success");
+      } finally {
+        submitButton.disabled = !Array.from(document.getElementById("statusSelect").options).some((option) => !option.disabled);
       }
     });
 
@@ -517,14 +576,15 @@
 
     document.getElementById("optOutForm").addEventListener("submit", async (event) => {
       event.preventDefault();
-      const fields = event.currentTarget.elements;
-      const submitButton = event.currentTarget.querySelector("button[type=submit]");
+      const optOutForm = event.currentTarget;
+      const fields = optOutForm.elements;
+      const submitButton = optOutForm.querySelector("button[type=submit]");
       submitButton.disabled = true;
       setStatus("optOutFormStatus", "Adding to suppression list and updating status...");
       try {
         const updated = await optOutLead(lead.id, fields.reason.value.trim() || null, fields.source.value);
         fillLead(updated);
-        event.currentTarget.reset();
+        optOutForm.reset();
         await refreshActivity();
         setStatus("optOutFormStatus", "Added to the permanent suppression list and set to Opted Out.", "success");
         document.getElementById("checkOptOutBtn").click();
@@ -537,7 +597,11 @@
 
     document.getElementById("sourceForm").addEventListener("submit", async (event) => {
       event.preventDefault();
-      const fields = event.currentTarget.elements;
+      const sourceForm = event.currentTarget;
+      const fields = sourceForm.elements;
+      const submitButton = sourceForm.querySelector("button[type=submit]");
+      if (submitButton.disabled) return;
+      submitButton.disabled = true;
       setStatus("sourceFormStatus", "Saving source record...");
       try {
         await addLeadSource(leadId, {
@@ -547,26 +611,52 @@
           source_type: fields.source_type.value,
           notes: fields.notes.value.trim() || null,
         });
-        event.currentTarget.reset();
+        sourceForm.reset();
         await refreshSources();
         setStatus("sourceFormStatus", "Source record saved.", "success");
       } catch (error) {
         setStatus("sourceFormStatus", error.message || "Could not save source record.", "error");
+      } finally {
+        submitButton.disabled = false;
       }
     });
 
     document.getElementById("noteForm").addEventListener("submit", async (event) => {
       event.preventDefault();
-      const note = event.currentTarget.elements.note.value.trim();
+      const noteForm = event.currentTarget;
+      const noteField = noteForm.elements.note;
+      const submitButton = noteForm.querySelector("button[type=submit]");
+      if (submitButton.disabled) return;
+
+      const note = noteField.value.trim();
       if (!note) return;
+      submitButton.disabled = true;
       setStatus("noteStatus", "Saving note...");
+
+      let savedNote;
       try {
-        await addLeadNote(leadId, note);
-        event.currentTarget.reset();
-        await refreshActivity();
-        setStatus("noteStatus", "Note saved.", "success");
+        savedNote = await addLeadNote(leadId, note);
       } catch (error) {
         setStatus("noteStatus", error.message || "Could not save note.", "error");
+        submitButton.disabled = false;
+        return;
+      }
+
+      noteForm.reset();
+      noteField.value = "";
+
+      try {
+        const activityRows = await refreshActivity(true);
+        const savedNoteId = Array.isArray(savedNote) ? savedNote[0]?.id : savedNote?.id;
+        if (savedNoteId && !activityRows.some((row) => row.id === savedNoteId)) {
+          throw new Error("The saved note was not present in the refreshed activity log.");
+        }
+        setStatus("noteStatus", "Note saved.", "success");
+      } catch (refreshError) {
+        console.error("Note saved, but the activity timeline could not confirm it:", refreshError);
+        setStatus("noteStatus", "Note saved. Refresh the page if it is not yet visible in Activity.", "success");
+      } finally {
+        submitButton.disabled = false;
       }
     });
 

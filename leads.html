@@ -66,8 +66,8 @@
 
         <div class="table-scroll">
           <table>
-            <thead><tr><th>Business</th><th>Contact</th><th>Website</th><th>City</th><th>Status</th><th>Fit score</th><th>Created</th><th></th></tr></thead>
-            <tbody id="leadsBody"><tr class="table-state"><td colspan="8">Loading leads...</td></tr></tbody>
+            <thead><tr><th>Business</th><th>Contact</th><th>Website</th><th>City</th><th>Status</th><th>Created</th><th></th></tr></thead>
+            <tbody id="leadsBody"><tr class="table-state"><td colspan="7">Loading leads...</td></tr></tbody>
           </table>
         </div>
         <p class="empty" id="leadsEmpty">No leads yet. Use "Add lead" to enter one manually.</p>
@@ -130,13 +130,12 @@
       if (!row.id) {
         return `
           <tr class="table-state error">
-            <td colspan="8">${html(row.business_name || "This lead")} is missing its id and cannot be opened.</td>
+            <td colspan="7">${html(row.business_name || "This lead")} is missing its id and cannot be opened.</td>
           </tr>
         `;
       }
 
       const href = leadDetailUrl(row.id);
-      const fitScore = row.fit_score === null || row.fit_score === undefined ? "&mdash;" : html(row.fit_score);
       return `
         <tr data-lead-id="${html(row.id)}" data-search-text="${html([row.business_name, row.contact_name, row.email, row.normalized_website_domain, row.city, row.category, row.status].join(" ").toLowerCase())}">
           <td class="entity"><a class="row-link" href="${href}">${html(row.business_name || "Unnamed")}</a></td>
@@ -144,7 +143,6 @@
           <td>${row.has_website ? html(row.normalized_website_domain || row.website_url || "-") : "No website"}</td>
           <td>${html(row.city || "-")}</td>
           <td><span class="status ${leadStatusClass(row.status)}">${html(row.status || "Discovered")}</span></td>
-          <td>${fitScore}</td>
           <td class="muted">${formatDate(row.created_at)}</td>
           <td><a class="row-link" href="${href}">Open</a></td>
         </tr>
@@ -285,13 +283,13 @@
     });
 
     if (!admin.redirecting && admin.configError) {
-      setTableState(body, admin.configError, true, 8);
+      setTableState(body, admin.configError, true, 7);
       count.textContent = "Unavailable";
     } else if (!admin.redirecting) {
       try {
         renderLeads(await getLeads());
       } catch (error) {
-        setTableState(body, error.message || "Could not load leads.", true, 8);
+        setTableState(body, error.message || "Could not load leads.", true, 7);
         count.textContent = "Supabase query failed";
       }
     }

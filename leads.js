@@ -79,7 +79,9 @@ export const optOutColumns = [
   "lead_id",
 ].join(", ");
 
-// Full Phase 1-5 workflow enum. This is a UI-convenience copy only — the
+// Full Phase 1-5 workflow enum in admin display order. Normal statuses can
+// move directly to any other normal status; Opted Out and Duplicate still
+// require their dedicated actions. This is a UI-convenience copy only — the
 // database's public.lead_status_transitions() function (used by the
 // leads_validate_status_transition trigger) is authoritative and enforces
 // this same matrix regardless of what this file thinks is legal. Keep the
@@ -93,30 +95,28 @@ export const LEAD_STATUSES = [
   "Draft Ready",
   "Approved to Send",
   "Contacted",
-  "Replied",
   "Follow-up Due",
+  "Replied",
   "Rejected",
   "Opted Out",
   "Duplicate",
 ];
 
+const NORMAL_LEAD_STATUSES = LEAD_STATUSES.slice(0, 10);
+
 export const LEAD_TRANSITIONS = {
-  "Discovered": ["Needs Review", "Duplicate", "Rejected", "Opted Out"],
-  "Needs Review": ["Approved for Mockup", "Duplicate", "Rejected", "Opted Out"],
-  "Approved for Mockup": ["Mockup In Progress", "Rejected", "Opted Out"],
-  "Mockup In Progress": ["Draft Ready", "Rejected", "Opted Out"],
-  "Draft Ready": ["Approved to Send", "Rejected", "Opted Out"],
-  "Approved to Send": ["Contacted", "Rejected", "Opted Out"],
-  "Contacted": ["Replied", "Follow-up Due", "Rejected", "Opted Out"],
-  "Replied": ["Follow-up Due", "Rejected", "Opted Out"],
-  "Follow-up Due": ["Contacted", "Rejected", "Opted Out"],
-  "Rejected": ["Needs Review"],
+  ...Object.fromEntries(
+    NORMAL_LEAD_STATUSES.map((status) => [
+      status,
+      [...NORMAL_LEAD_STATUSES.filter((candidate) => candidate !== status), "Opted Out", "Duplicate"],
+    ])
+  ),
   // Opted Out is terminal in Phase 1 — there is no reopen/suppression-lift
   // workflow. Must match public.lead_status_transitions()'s 'Opted Out'
   // case in supabase-lead-engine-schema.sql, which the database actually
   // enforces regardless of what this map says.
   "Opted Out": [],
-  "Duplicate": ["Needs Review"],
+  "Duplicate": [...NORMAL_LEAD_STATUSES],
 };
 
 // Statuses that require a dedicated RPC (opt_out_lead / mark_lead_duplicate)
