@@ -609,3 +609,163 @@ export async function findOptOutMatches({ email, phone, websiteUrl } = {}) {
   }
   return data || [];
 }
+
+// --- AI research reports (Phase 2A, read-only from the browser except for
+// the review_lead_asset_candidate RPC) --------------------------------------
+// lead_research_reports / lead_research_sources / lead_asset_candidates are
+// written only by netlify/functions/lead-research.js using the service-role
+// key, after it independently verifies the caller's session and
+// public.is_admin() itself (see supabase-lead-research-schema.sql for the
+// RLS that enforces this — there is no browser INSERT/UPDATE policy on
+// these tables at all). runLeadResearch() below only ever calls that
+// function; it never talks to OpenAI directly and never sees an API key.
+
+export const researchReportColumns = [
+  "id",
+  "lead_id",
+  "created_at",
+  "updated_at",
+  "status",
+  "is_mock",
+  "error_message",
+  "business_summary",
+  "activity_evidence",
+  "verified_details",
+  "website_findings",
+  "brand_cues",
+  "recommended_customer_action",
+  "personalization_detail",
+  "missing_or_conflicting_information",
+  "mockup_brief",
+  "model_used",
+  "requested_by_actor",
+  "completed_at",
+].join(", ");
+
+export const researchSourceColumns = [
+  "id",
+  "report_id",
+  "lead_id",
+  "created_at",
+  "source_url",
+  "source_title",
+  "source_type",
+  "supports_fields",
+  "notes",
+].join(", ");
+
+export const assetCandidateColumns = [
+  "id",
+  "report_id",
+  "lead_id",
+  "created_at",
+  "asset_url",
+  "source_page_url",
+  "asset_type",
+  "description",
+  "ownership_context",
+  "approved_for_mockup",
+  "rejection_reason",
+].join(", ");
+
+// The most recent research report for a lead, or null if AI research has
+// never been run. lead-detail.html always shows this one, not a history —
+// older reports remain in the database (and in lead_activity_log) but
+// Phase 2A's UI only surfaces the latest.
+export async function getLatestResearchReport(leadId) {
+  const { data, error } = await supabase
+    .from("lead_research_reports")
+    .select(researchReportColumns)
+    .eq("lead_id", leadId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Supabase lead_research_reports select failed:", error);
+    throw error;
+  }
+  return data || null;
+}
+
+export async function getResearchSources(reportId) {
+  if (!reportId) return [];
+  const { data, error } = await supabase
+    .from("lead_research_sources")
+    .select(researchSourceColumns)
+    .eq("report_id", reportId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.error("Supabase lead_research_sources select failed:", error);
+    throw error;
+  }
+  return data || [];
+}
+
+export async function getResearchAssetCandidates(reportId) {
+  if (!reportId) return [];
+  const { data, error } = await supabase
+    .from("lead_asset_candidates")
+    .select(assetCandidateColumns)
+    .eq("report_id", reportId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.error("Supabase lead_asset_candidates select failed:", error);
+    throw error;
+  }
+  return data || [];
+}
+
+// The only browser write path onto lead_asset_candidates — narrowly scoped
+// to approve/reject, enforced server-side by review_lead_asset_candidate()
+// (SECURITY DEFINER) in supabase-lead-research-schema.sql.
+export async function reviewAssetCandidate(assetId, approved, rejectionReason) {
+  const { data, error } = await supabase.rpc("review_lead_asset_candidate", {
+    p_asset_id: assetId,
+    p_approved: approved,
+    p_rejection_reason: rejectionReason || null,
+  });
+  if (error) {
+    console.error("Supabase review_lead_asset_candidate RPC failed:", error);
+    throw error;
+  }
+  return data;
+}
+
+// Calls the server-side Netlify Function that performs AI research — never
+// OpenAI directly, and OPENAI_API_KEY never reaches this file or the
+// browser. Runs whichever mode the server is explicitly configured for:
+// real research when OPENAI_API_KEY is set, or a clearly-labeled mock
+// fixture (is_mock: true on the saved report) only when the server operator
+// has explicitly set LEAD_RESEARCH_MOCK_MODE=true. If neither is
+// configured, the server returns a configuration error rather than
+// silently generating fake research.
+export async function runLeadResearch(leadId) {
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError || !sessionData || !sessionData.session) {
+    throw new Error("Your session has expired. Sign in again to run AI research.");
+  }
+
+  const response = await fetch("/.netlify/functions/lead-research", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${sessionData.session.access_token}`,
+    },
+    body: JSON.stringify({ lead_id: leadId }),
+  });
+
+  let responsePayload = {};
+  try {
+    responsePayload = await response.json();
+  } catch (error) {
+    // Fall through to the generic status-based error below.
+  }
+
+  if (!response.ok) {
+    throw new Error(responsePayload.error || `AI research failed (HTTP ${response.status}).`);
+  }
+  return responsePayload;
+}

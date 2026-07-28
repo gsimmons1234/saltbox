@@ -77,7 +77,13 @@ Lead Engine (Phase 1 — schema written in `supabase-lead-engine-schema.sql`, no
 - `outreach_opt_outs`
 - `lead_activity_log`
 
-Phase 2-5 Lead Engine tables (`lead_audits`, `lead_mockups`, `outreach_drafts`, `outreach_events`) do not exist yet and are intentionally out of scope for this file.
+Lead Engine (Phase 2A — AI research reports, schema written in `supabase-lead-research-schema.sql`, not yet run; depends on Phase 1's tables above):
+
+- `lead_research_reports`
+- `lead_research_sources`
+- `lead_asset_candidates`
+
+Remaining Phase 2-5 Lead Engine tables (`lead_audits`, `lead_mockups`, `outreach_drafts`, `outreach_events`) do not exist yet and are intentionally out of scope for this file. Scheduled/automatic business discovery, AI image generation, email sending, and automatic outreach are also not built.
 
 Customer system:
 
@@ -316,6 +322,214 @@ Run `supabase-lead-engine-schema.sql` in Supabase and confirm your admin user is
 - Hosted-profile domain handling (Facebook, Instagram, Yelp, Google Maps, etc.) intentionally returns `null` for `normalized_website_domain` rather than attempting to extract a per-tenant identity from the URL path. This means two leads that are genuinely the same business, found only via two different hosted-profile URLs (no independent domain, email, or phone in common), will **not** be flagged as duplicates of each other. A future pass could add a safe, platform-specific tenant-id extractor if this becomes a real gap; guessing at one now risked exactly the false-collapse bug this fix addresses.
 - The known hosted-profile host list in `normalize_website_domain()` (SQL) and `HOSTED_PROFILE_HOSTS` (`leads.js`) is a fixed, manually-maintained list — a platform not on the list still normalizes to its own bare domain, which is correct for an actual small-business domain but would be wrong if a not-yet-listed platform also serves per-tenant paths under one shared host. Extend both lists together if that comes up.
 
+## Lead Engine (Phase 2A)
+
+AI-generated business research reports. An admin opens an existing lead on `lead-detail.html`, clicks "Run AI Research," and a server-side Netlify Function researches that business and saves a source-backed report. Amy's Nails (Layton, Utah) is the manual test lead used to build and exercise this phase — see `mockups/amys-nails-layton/`, an unrelated earlier deliverable, for its public business details.
+
+Explicitly out of scope for this phase (do not assume any of this exists): scheduled/automatic business discovery, AI image generation, email sending, automatic outreach, and numeric fit scoring. `leads.fit_score`/`fit_score_reasoning` remain unused, as in Phase 1.
+
+### Database
+
+`supabase-lead-research-schema.sql` is a targeted addition, not a rerun of `supabase-lead-engine-schema.sql` — it depends on `public.is_admin()`/`public.set_updated_at()` (from `supabase-launch-schema.sql`) and `public.leads` (from `supabase-lead-engine-schema.sql`), both of which must already be applied. It creates exactly three new tables:
+
+- **`lead_research_reports`** — one row per research run. `status` is `running` → `complete` or `failed`. A partial unique index (`where status = 'running'`) allows at most one in-flight run per `lead_id` at the database level — this, not app logic, is what actually blocks two concurrent "Run AI Research" clicks (or two admins clicking it at once) from racing. `is_mock` is `true` only for a report produced by the explicit mock-fixture path (see "Explicit mock mode" below) — it is never inferred, and real/mock content can never mix. `error_classification` is always one of a fixed set of safe labels (`provider_auth_error`, `provider_rate_limited`, `provider_timeout`, `provider_invalid_response`, `provider_refusal`, `provider_incomplete`, `provider_unavailable`, `research_validation_failed`, `internal_error` — enforced by a `CHECK` constraint) and `error_message` is a short, sanitized, human-written description — neither is ever a raw provider/Supabase error object, and neither can ever contain `OPENAI_API_KEY` or `SUPABASE_SERVICE_ROLE_KEY`. `requested_by_actor` is the verified caller's email, captured server-side from their Supabase session — mirrors `current_actor_label()`'s pattern in Phase 1, computed in the Netlify Function itself since this row is written with the service-role key, outside any `auth.uid()` context. A `unique (id, lead_id)` constraint backs the composite foreign keys described next. See "Research-report JSON structure" below for what the `jsonb` columns actually contain.
+- **`lead_research_sources`** — every source URL backing a specific report's claims (`source_url`, `source_title`, `source_type`, `supports_fields`, `notes`). Deliberately a separate table from Phase 1's `lead_sources` (manual, human-entered source records) — the two are never mixed, so the admin UI can keep "an admin typed this in" visually and structurally distinct from "the model said it found this."
+- **`lead_asset_candidates`** — candidate images found during research, for admin review only. `approved_for_mockup` defaults to `false`; nothing in this phase (or any code that exists yet) ever places one of these into an actual mockup — that flag is only ever a signal for a later phase to read.
+
+**Child-row lead/report consistency.** `lead_research_sources` and `lead_asset_candidates` both carry `report_id` and `lead_id`. Rather than two independent single-column foreign keys (which would let a bug insert a source whose `report_id` names one lead's report while its own `lead_id` names a different lead entirely), both are tied together with one composite foreign key — `foreign key (report_id, lead_id) references lead_research_reports (id, lead_id)` — backed by `lead_research_reports`' own `unique (id, lead_id)` constraint. Postgres itself now rejects a mismatched pair at the database level; existing UI queries (`.eq("report_id", ...)`, `.eq("lead_id", ...)`) are unaffected since both columns still exist and are still independently indexed.
+
+Write path: all writes to `lead_research_reports`/`lead_research_sources` go through three narrowly-scoped, **server-only** RPCs — not plain `INSERT`/`UPDATE` calls, and not RPCs an admin's browser session can call:
+
+- **`begin_lead_research_run(p_lead_id, p_requested_by_actor)`** — called once per "Run AI Research" click. Atomically verifies the lead exists, repairs any of that lead's `status='running'` reports older than a 10-minute staleness threshold (marking them `failed` with `error_classification = 'provider_timeout'` — see "Stale running report recovery" below), inserts the new running report, and returns its id. The partial unique index is still the actual concurrency guard: a second, near-simultaneous call still only gets one successful `INSERT`, surfacing a Postgres unique-violation (`23505`) that `lead-research.js` turns into an HTTP 409, exactly as before.
+- **`complete_lead_research_run(p_report_id, p_lead_id, ...content, p_sources, p_asset_candidates)`** — called once, after `lead-research.js` has already fully validated the result. Locks the report row, confirms it exists, belongs to the expected lead, and is still `running`; then **strictly validates `p_sources`/`p_asset_candidates` are themselves genuine, non-null JSON arrays** (`jsonb_typeof(...) = 'array'`) — a SQL `NULL`, a JSON `null`, an object, a string, or a number raises a controlled exception instead of being silently treated as "nothing to insert" (an actual empty array `[]` is valid and legitimately inserts zero rows); then inserts the source/asset-candidate child rows and writes the report content, all in the same function invocation. Because this is one Postgres function call, any failure along the way (the array-type check, or an insert hitting a `CHECK` constraint on something that slipped past the Netlify Function's own validation) rolls back everything, including the report-content update — a completed report can never end up with partial or missing child rows, and the array-shape guard can never be silently bypassed by a caller bug.
+- **`fail_lead_research_run(p_report_id, p_lead_id, p_error_classification, p_error_message)`** — called from the Netlify Function's own `catch` block. Only transitions a report that is still `running`; a report already `complete` or already `failed` is left untouched, so a late/duplicate error handler can never downgrade a successful completion. If this call itself fails (network hiccup, transient DB error), the Netlify Function does not retry or crash — it writes one sanitized structured log line (classification, report id, lead id, plus a fixed `fail_rpc_write_failed` marker — never the raw Supabase error, a token, or the lead record) and still returns the browser the friendly message for the *original* failure classification. The affected report may be left at `status='running'` in that rare case; `begin_lead_research_run()`'s stale-run recovery (see below) is what eventually frees that lead for a new run regardless, so nothing stays permanently stuck.
+
+All three are `revoke all ... from public` **and** `revoke all ... from authenticated`, then `grant execute ... to service_role` only — they cannot be called by a signed-in admin's browser session at all, only by the Netlify Function (which has already independently verified the caller's session and `public.is_admin()` before ever reaching them). None of the three re-checks `is_admin()` itself: under the service-role connection there is no `auth.uid()` to check against, so that would always fail closed — the admin check has already happened, in the calling function, before any of these RPCs are ever invoked.
+
+`lead_asset_candidates` has one narrow exception to the "browser reads only" rule:
+
+- **`review_lead_asset_candidate(p_asset_id, p_approved, p_rejection_reason)`** (`SECURITY DEFINER`, granted to `authenticated`, same shape as Phase 1's `add_lead_note()`) — the only way the browser can ever change a `lead_asset_candidates` row. Authorization uses `if public.is_admin() is not true then raise exception`; the `UPDATE` touches only `approved_for_mockup`/`rejection_reason` — `asset_url`, `source_page_url`, `report_id`, `lead_id`, and `ownership_context` never appear on its left-hand side, so an admin can approve or reject a candidate but never rewrite what it is, where it was found, or whose lead it belongs to. Approving always clears any prior `rejection_reason`; rejecting always stores a non-null reason (falling back to a fixed placeholder — `'Rejected (no reason provided).'` — if the admin's prompt was empty or cancelled), so a rejected candidate can never look identical to a never-reviewed one, which previously both had `rejection_reason = null`.
+
+All three tables `enable row level security`, each with exactly one `SELECT` policy gated on `public.is_admin()`.
+
+**This SQL file has not been run.** Run it manually in the Supabase SQL editor, after confirming `supabase-launch-schema.sql` and `supabase-lead-engine-schema.sql` are already applied.
+
+### Stale running report recovery
+
+A Netlify Function invocation can be hard-killed by the platform's own execution-time ceiling before its own `catch` block ever runs — e.g. a slow OpenAI web-search call that outruns the limit. Without recovery, that would leave a permanent `status='running'` row that blocks all future research for that lead forever, since only one running report is allowed per lead. `begin_lead_research_run()` handles this itself, every time it's called: any `running` report for that lead older than 10 minutes is marked `failed` (`error_classification = 'provider_timeout'`) before the new one is created. 10 minutes was chosen as comfortably longer than any realistic Netlify Function execution ceiling (10 seconds by default; longer for higher-tier plans and background functions) while still being short enough that a genuinely stuck run doesn't block research for long. This is documented in full in the function's own comment in `supabase-lead-research-schema.sql`.
+
+### Server-side authorization (`netlify/functions/lead-research.js`)
+
+This function is the only thing that ever calls OpenAI or writes to the three tables above. Per request:
+
+1. **Method check** — only `POST` is handled; everything else (including `OPTIONS`) gets a plain 405. `lead-detail.html` only ever calls this same-origin via a relative URL, which never triggers a CORS preflight regardless of headers sent, so there is nothing for `OPTIONS` to legitimately do here.
+2. **Strict request validation, before `body.lead_id` is ever read** — the raw body is byte-length-capped (2048 bytes) before it is even `JSON.parse`'d; the parsed value must be a plain object (not `null`, not an array, not a primitive) with **exactly one** property, `lead_id`; that value is then checked against a UUID regex. Any deviation — extra properties, wrong shape, malformed UUID — is rejected with 400 before any Supabase call is made.
+3. **Session verification** — the `Authorization: Bearer <token>` header is required and is verified against Supabase Auth itself via `authedClient.auth.getUser(token)`, not decoded or trusted locally.
+4. **Admin verification** — `public.is_admin()` is then called through that *same* authenticated client (anon key + the caller's own JWT as the request's `Authorization` header), so it runs under the caller's real `auth.uid()` context — the identical RLS path the browser itself would get, not an assumption this function makes on its own. A non-admin session (e.g. a signed-in customer-portal user) is rejected with 403 here even though it has a perfectly valid session.
+5. Only after all of the above passes does it switch to a **service-role client** to load the lead and perform the actual writes.
+6. **Mode is decided before any report row exists** — see "Explicit mock mode" below. A missing `OPENAI_API_KEY` with mock mode not explicitly enabled returns a configuration error immediately; no report row is created either way.
+7. **Duplicate concurrent runs and stale-run recovery** are both handled inside `begin_lead_research_run()` (see above) — the RPC either succeeds and returns a report id, or fails with `23505` and the function returns 409, never both.
+8. Every run — start, completion, and failure — writes a `lead_activity_log` row (`ai_research_started`/`ai_research_completed`/`ai_research_failed`) directly, using the service-role key. This is the same trust model Phase 1 already applies to every other `lead_activity_log` write (a trusted, privileged path with a database-derived actor label, never a browser-supplied one) — a verified-admin, verified-session serverless function is an equally trusted writer as a `SECURITY DEFINER` Postgres function.
+9. `OPENAI_API_KEY` and `SUPABASE_SERVICE_ROLE_KEY` are read only from `process.env`, are never included in any HTTP response, and are never logged — see "Error sanitization and classification" below.
+10. This function never sends email and never generates a mockup — neither exists anywhere in the codebase yet. It also never writes to any local filesystem path: a deployed Netlify Function has no access to the operator's laptop, so the local export folder (`C:\Users\gabby\OneDrive\Documents\Site Mockup Images`) is out of scope for this phase entirely — future generated assets belong in Supabase Storage or a later Google Drive integration, not a local folder, and nothing in this codebase writes there.
+
+The Supabase anon/publishable key used for steps 3/4 is hardcoded in `lead-research.js` (`SUPABASE_ANON_KEY`) rather than read from an env var — it is the same public value already shipped to every browser in `supabase-client.js` (visible in view-source today), carries no elevated privileges on its own, and requiring yet another Netlify env var for a value that is already public would only add setup friction without adding security. Keep the two in sync if the Supabase project's anon key ever rotates.
+
+### Explicit mock mode
+
+Mock-fixture research (`buildMockResearchResult()`, zero network calls, zero cost) only ever runs when the server operator has explicitly set `LEAD_RESEARCH_MOCK_MODE=true` — `isMockModeEnabled()` lowercases the env var and compares it, literally, against the string `"true"`; any other value (`"1"`, `"yes"`, unset, **or `" true "` with surrounding whitespace**, etc.) leaves it disabled. The comparison deliberately does not `.trim()` the value first — a value that isn't the exact literal string `"true"` is not treated as if it were, even if it merely has stray whitespace around an otherwise-correct value; a copy-paste artifact in an env var should fail closed, not silently succeed. **A missing `OPENAI_API_KEY` no longer implies mock mode.** If `LEAD_RESEARCH_MOCK_MODE` is not `true` and `OPENAI_API_KEY` is not set, the function returns a 500 configuration error (`classification: "configuration_error"`) and creates no report row at all — there is no automatic/implicit fallback to fake data. When `LEAD_RESEARCH_MOCK_MODE=true`, mock mode always wins regardless of whether `OPENAI_API_KEY` also happens to be set, so an admin can force mock output for testing without having to unset a real key first.
+
+A saved mock report always has `is_mock: true` and `model_used: "mock-fixture-v1"`; a saved live report always has `is_mock: false` and whatever model string the OpenAI response itself reports (see "Research-report JSON structure" below). The two paths are strictly `if`/`else` — `buildMockResearchResult()` and `runOpenAiResearch()` can never both run for the same request, so real and mock content can never mix within one report. `lead-detail.html`'s "Mock data" banner reads `is_mock` directly and its copy says the report "was generated with `LEAD_RESEARCH_MOCK_MODE` explicitly enabled on the server" — it no longer implies the key merely happened to be missing.
+
+### Error sanitization and classification
+
+Every failure `lead-research.js` can produce is mapped to exactly one of nine fixed classifications (`provider_auth_error`, `provider_rate_limited`, `provider_timeout`, `provider_invalid_response`, `provider_refusal`, `provider_incomplete`, `provider_unavailable`, `research_validation_failed`, `internal_error`) before it ever reaches a log line, the database, or the browser:
+
+- HTTP status from the OpenAI request maps to a classification (401/403 → auth error, 429 → rate limited, 5xx → unavailable, other non-2xx → invalid response); a fetch-level `AbortSignal.timeout(25000)` timeout maps to `provider_timeout`; a Responses API `status: "incomplete"` maps to `provider_incomplete`; a `refusal`-type content item maps to `provider_refusal`; missing/unparseable structured output maps to `provider_invalid_response`; any structural/type/citation-coverage problem from `validateAndBuildResearchResult()` maps to `research_validation_failed`; anything else (including a failed `complete_lead_research_run()` call) maps to `internal_error`.
+- Log lines (`console.error`) contain only the classification, the report id, and the lead id — never a raw error object, a provider response body, a request payload, an `Authorization` header, or the lead record itself.
+- The value stored in `lead_research_reports.error_message` is always a short, developer-written string set at the point the classified `ResearchError` was thrown (e.g. `"OpenAI rejected the request credentials (HTTP 401)."`) — never the raw response body. The old behavior of embedding up to 300 characters of the raw OpenAI error response text has been removed entirely.
+- The browser receives a fixed, friendly message per classification (`FRIENDLY_MESSAGE_BY_CLASS`) plus the classification string itself, and an HTTP status chosen per classification (e.g. 429 for rate-limited, 504 for timeout, 502 for most provider/validation failures, 500 for internal errors) — never the sanitized-but-still-internal `error_message` stored in the database.
+
+### Strict output validation (`validateAndBuildResearchResult()`)
+
+Replaces the earlier "coerce anything malformed into a safe default" approach entirely. Nothing here silently turns a missing or wrong-typed field into `""`, `[]`, `false`, or a stock fallback claim (e.g. the old `"Call to check availability."` fallback for a missing `recommended_customer_action` is gone) — every structural problem throws a `research_validation_failed` `ResearchError` instead, and the whole run fails rather than saving a partially-invented report. This runs only against real OpenAI output — the mock-fixture path is static, already-correct data and deliberately bypasses it entirely (see "Explicit mock mode" above).
+
+Checked, in order:
+
+1. The top-level value is a plain object; every required top-level key is present; `business_summary`, `recommended_customer_action`, `mockup_brief.concept_direction`, and `mockup_brief.tone` are non-empty strings; every nested object (`verified_details`, `website_findings`, `activity_evidence`, `brand_cues`, `mockup_brief`) is itself a plain object with correctly-typed fields (nullable strings stay nullable strings, arrays stay string arrays, `website_findings.presence_type` must be one of the three recognized values, `activity_evidence.appears_active` must actually be a boolean).
+2. **`sources` and `asset_candidates` are each fully, structurally validated entry-by-entry before anything else happens to them.** A malformed entry — wrong type on any field, a `source_type`/`asset_type` outside the approved enum, a `supports_fields` entry that isn't one of the approved field-name tokens (see "Fact-specific citation coverage" below), an entry that isn't even an object — is **not** silently dropped or repaired; it fails the entire run with `research_validation_failed`, identifying exactly which entry and field (e.g. `"sources[2].source_type must be one of the approved source types."`).
+3. **Only after every entry has passed structural validation** may an individual, already-valid entry still be excluded from what gets saved — never a run failure by itself — for an unsafe URL (`isSafeHttpsUrl()`, see "URL safety hardening" below) or, for sources specifically, no matching web-search citation (see "Source citation cross-checking" below).
+4. **Fact-specific citation coverage** (see below) is checked last, using only the sources that survived step 3.
+
+### Source citation cross-checking
+
+A model can write a plausible-looking URL without having actually found it via web search — Responses-API output text is not proof of a citation. `extractCitationUrls()` walks the response's `output[].content[].annotations` looking specifically for entries where **`annotation.type === "url_citation"`** — the Responses API's actual web-search citation shape — and builds a set of normalized citation URLs from those only. An annotation that merely happens to carry a `url` property but isn't tagged `url_citation` (a different/future annotation type, or a `url` with no `type` at all) is never treated as a verified citation. A structurally-valid `sources` entry is kept only if: it is a safe HTTPS URL (see "URL safety hardening" below), **and** its normalized form matches one of those extracted `url_citation` URLs. Anything else is excluded at the per-source level (not a run failure by itself — see step 3 above). The same URL-safety check applies to every `asset_candidates` entry's `asset_url` and `source_page_url`; assets have no citation requirement (they're for admin review, never treated as verified facts) and always default to `approved_for_mockup: false`.
+
+**Fact-specific citation coverage** — report-wide coverage (formerly: "at least one source exists somewhere") is not enough, and has been replaced. Every source's `supports_fields` must itself be an array containing only tokens from a fixed, approved vocabulary (`FACT_FIELD_TOKENS` in `lead-research.js`): `business_name`, `address`, `phone`, `email`, `hours`, `services`, `website_presence`, `activity_evidence` — an unapproved token is a structural validation failure (see step 2 above), not silently ignored. For every verified field the report actually populated, **at least one surviving, citation-backed source must explicitly list that exact field** in its own `supports_fields` — a source that supports only `"phone"` can never validate a separately-claimed `services` list or `address`. `business_name` and `website_presence` are always in scope (`business_summary` and `website_findings.presence_type` are both always-required, non-empty fields); `address` gates on either `verified_details.address` or `.service_area`; `phone`/`email`/`hours` gate on their own field; `services` gates on a non-empty `services` array; `activity_evidence` gates on `appears_active === true` or a non-empty `signals` array. A field with no matching coverage fails the whole run with `research_validation_failed`, naming the specific field. Free-form AI observations, recommendations, missing-information notes, and the creative brief (`website_findings.observations`/`.homepage_opportunities`, `brand_cues`, `recommended_customer_action`, `personalization_detail`, `missing_or_conflicting_information`, `mockup_brief`) are never subject to this — only verified facts are.
+
+**Caveat:** because `OPENAI_API_KEY` was never configured in this environment, the exact annotation shape (`output[].content[].annotations[].type === "url_citation"`, `.url`) has never been observed against a real response — it reflects the Responses API's documented contract as of this writing. If the live shape differs, `extractCitationUrls()` simply returns an empty set, which makes the fact-specific coverage check above fail closed (every real, fact-bearing report would be rejected as unvalidated) rather than silently accepting unverified URLs — a loud, safe failure to fix before relying on this in production, not a security gap.
+
+The model identifier actually saved (`model_used`) is read from the OpenAI response body itself (`data.model`) when present, falling back to the requested model name (`OPENAI_RESEARCH_MODEL` or the `"gpt-4.1"` default) only if the response doesn't report one — the API's served model can differ from the one requested (e.g. aliasing to a dated snapshot).
+
+### URL safety hardening (`isSafeHttpsUrl()`)
+
+Applied to every research source URL and every asset/source-page URL. HTTPS only (no `http:`, `javascript:`, `data:`, `file:`, or any other scheme), a 2048-character length cap, and `localhost`/`*.localhost`/`*.local` rejected by name. Beyond that, the function rejects a URL whose host is a literal IP address in any non-public range: the full IPv4 loopback block (`127.0.0.0/8`, not just `127.0.0.1`), RFC 1918 private ranges, link-local, unspecified (`0.0.0.0`), carrier-grade NAT (`100.64.0.0/10`), IETF/documentation/benchmarking ranges, and multicast/reserved — plus the IPv6 equivalents (loopback `::1`, unspecified `::`, link-local `fe80::/10`, unique-local/private `fc00::/7`, multicast `ff00::/8`) and IPv4-mapped/NAT64 IPv6 forms (`::ffff:0:0/96`, `64:ff9b::/96`), which are rejected unconditionally rather than having their embedded IPv4 address extracted and separately re-checked — no legitimate citation or image URL is ever written in that form, so treating the whole range as an ambiguous IP literal and failing closed is the safer choice. `new URL()`'s own parsing already normalizes obfuscated IPv4 forms (hex `0x7f000001`, octal `0177.0.0.1`, bare-decimal `2130706433`, shorthand `127.1`) into canonical dotted-decimal before this check ever runs, and a malformed bracketed-IPv6 host (or any other unparseable URL) fails closed via the initial `new URL()` try/catch. Ordinary domain names (anything that isn't a literal IP) pass through unchanged — DNS resolution itself is out of scope; this validates the literal URL a source/asset claims, not where its name might resolve at fetch time.
+
+Implemented with two separate `net.BlockList` instances (Node's built-in CIDR/IP-range matcher), one for IPv4 ranges and one for IPv6 — **not one shared instance for both.** On the Node version this was developed and tested against, registering both IPv4 and IPv6 subnets on a single `BlockList` was empirically found to make its IPv4 checks incorrectly match unrelated public IPv4 addresses (e.g. `8.8.8.8` and `100.128.0.1`, which are not in any registered private range) once any IPv6 subnet was also present on that same instance. Splitting into two family-specific instances was verified to resolve this cleanly, including at the exact public/private boundary addresses (`100.63.255.255` blocked, `100.128.0.1` allowed; `172.31.255.255` blocked, `172.32.0.1` allowed). If Node's `BlockList` behavior around mixed-family instances changes in a future version, this two-instance split remains correct regardless — it just may become unnecessary, not wrong.
+
+### Research-report JSON structure
+
+Both the mock-fixture path and the validated real-OpenAI path return this exact shape before saving. `sources` and `asset_candidates` are lifted out of the object into their own tables; every other key maps 1:1 onto a `lead_research_reports` column:
+
+```
+{
+  business_summary: string,
+  verified_details: {
+    phone: string|null, email: string|null, address: string|null, service_area: string|null,
+    services: string[], hours: string|null, hours_conflict: string|null
+  },
+  website_findings: {
+    presence_type: "dedicated_website" | "social_only" | "no_website_found",
+    website_url: string|null, observations: string[], homepage_opportunities: string[]
+  },
+  activity_evidence: { appears_active: boolean, signals: string[] },
+  brand_cues: { personality: string[], colors: string[], notes: string|null },
+  recommended_customer_action: string,
+  personalization_detail: string,
+  missing_or_conflicting_information: string[],
+  mockup_brief: { concept_direction: string, key_sections: string[], tone: string, must_avoid: string[] },
+  sources: [{ source_url, source_title, source_type, supports_fields: string[], notes }],
+  asset_candidates: [{ asset_url, source_page_url, asset_type, description, ownership_context }]
+}
+```
+
+`hours` is only ever populated when sources agree; when they conflict, `hours` stays `null` and `hours_conflict` explains the disagreement instead of guessing.
+
+### Local testing with Netlify Dev
+
+**A plain static server (`npx serve`, `python3 -m http.server`, etc.) cannot execute `lead-research.js` at all.** Those serve files only — there is no Node runtime behind them to invoke a Netlify Function, so `/.netlify/functions/lead-research` returns a plain static-server 404 no matter what the browser sends. Testing Phase 2A (mock or live) requires one of:
+
+- **Netlify Dev** (recommended for local iteration) — runs the static site *and* executes functions locally, proxying `/.netlify/functions/*` to real Node invocations of the files in `netlify/functions/`.
+- **A deployed Netlify Function endpoint** (a real Netlify site, or a Netlify deploy preview) — functions run for real, on Netlify's infrastructure.
+
+**Exact local command** (from the repository root):
+
+```
+npx netlify-cli dev
+```
+
+The first run prompts for a few one-time answers if there is no linked site yet: no build command, publish directory `.` (the repository root, since this is a plain static site with no build step), and functions directory `netlify/functions` (already the correct location — nothing in this repo needs to change for Netlify Dev to find `lead-research.js`). Once running, open the URLs Netlify Dev prints (typically `http://localhost:8888/lead-detail.html?id=...`) — that's a single origin that proxies both the static files and the function together, so the "Run AI Research" button's same-origin `fetch("/.netlify/functions/lead-research")` call actually reaches the function.
+
+**Environment variables for Netlify Dev** are read from a local `.env` file in the repository root (already covered by `.gitignore`'s `.env`/`.env.*` entries — never commit one). Create it locally with:
+
+For mock-mode testing (no OpenAI account needed):
+
+```
+LEAD_RESEARCH_MOCK_MODE=true
+SUPABASE_URL=<your Supabase project URL>
+SUPABASE_SERVICE_ROLE_KEY=<your Supabase service role key>
+```
+
+For live research testing:
+
+```
+OPENAI_API_KEY=<your OpenAI API key>
+SUPABASE_URL=<your Supabase project URL>
+SUPABASE_SERVICE_ROLE_KEY=<your Supabase service role key>
+```
+
+(`SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` are required in both cases — the function loads and updates the lead/report rows in Supabase regardless of which research mode is active; only the research call itself differs.) Do not set both `LEAD_RESEARCH_MOCK_MODE=true` and a real `OPENAI_API_KEY` unless you specifically want mock mode to win — explicit mock mode always takes priority over a configured key (see "Explicit mock mode" above).
+
+Do not write real secret values into `handoff.md`, any tracked file, or a commit — the placeholders above are illustrative only.
+
+### Files added
+
+- `supabase-lead-research-schema.sql`
+- `netlify/functions/lead-research.js`
+- `netlify/functions/lead-research.test.js` — plain-Node tests (no framework, no new dependency) for the pure, side-effect-free helpers in `lead-research.js`, exposed for testing only via `exports.__internal` (`isMockModeEnabled`, `isSafeHttpsUrl`, `extractCitationUrls`, `validateAndBuildResearchResult`, `buildMockResearchResult`, plus the `CLASS`/`FACT_FIELD_TOKENS` constants). Run with `node netlify/functions/lead-research.test.js`; exits non-zero on any failed assertion, so it's safe to wire into a future CI step as-is. Covers: `url_citation`-only annotation acceptance, malformed source/asset objects failing validation (not being silently dropped), fact-specific per-field citation coverage (including the "one source can't validate an unrelated field" case), the literal/untrimmed mock-mode match, and ~35 URL-safety cases (public domains, every rejected private/loopback/reserved range, obfuscated IPv4 literals, IPv6 forms). Does not exercise `exports.handler` itself (session verification, the three RPC calls, request routing) — that requires a live Supabase project and stays covered by the manual testing checklist below, consistent with every other RPC-level scenario in this phase.
+
+### Files changed
+
+- `leads.js` — added `getLatestResearchReport()`, `getResearchSources()`, `getResearchAssetCandidates()`, `reviewAssetCandidate()`, `runLeadResearch()`, and the three research-related column lists. Nothing existing in this file changed.
+- `lead-detail.html` — added an "AI Research Report" panel (Run AI Research button, loading/success/error states, last-researched date, all report fields, source list, and a candidate-image gallery with approve/reject controls). The candidate-image gallery never renders `<img src="">` for an invalid/unsafe URL — it shows a visible "Invalid or unavailable image URL" placeholder instead, and a runtime image-load failure (a URL that validated but 404s) falls back to the same placeholder via `onerror` without affecting any other part of the panel. Nothing else existing in this file changed.
+- `admin.css` — additive-only classes for the new panel (`.research-block`, `.research-list`, `.tag-row`/`.tag`, `.asset-grid`/`.asset-card`/`.asset-thumb`/`.asset-body`/`.asset-status`), plus updated copy on `.asset-thumb.broken::after` ("Invalid or unavailable image URL").
+- `handoff.md` — this section, plus updates to the SQL-to-run and Netlify env var lists below.
+
+### Manual testing checklist (Phase 2A)
+
+Run `supabase-lead-research-schema.sql` in Supabase first (after confirming Phase 1's migration is applied). Test with Netlify Dev (see above) — a plain static server cannot run any of this.
+
+0. **Run the automated tests first** — `node netlify/functions/lead-research.test.js`. Confirm every assertion passes (no Supabase/OpenAI access needed for this step) before working through the scenarios below, which cover the parts that do need a live Supabase project.
+
+1. **Configuration error when nothing is set** — With neither `LEAD_RESEARCH_MOCK_MODE` nor `OPENAI_API_KEY` set, click "Run AI Research." Confirm a clear configuration-error message, and confirm (via a direct Supabase check, or "Check suppression list"-style inspection) that **no** `lead_research_reports` row was created for that lead.
+2. **Run AI Research (explicit mock mode)** — With `LEAD_RESEARCH_MOCK_MODE=true` set, click "Run AI Research." Confirm the button disables and shows "Researching...", then re-enables with a success message noting mock fixture data.
+3. **Report renders** — Confirm every section of the new panel populates: business summary, verified details, activity evidence, website findings, brand cues, recommended action, personalization detail, missing/conflicting info, mockup brief, sources, and candidate images. Confirm the "Mock data" banner is visible and its text references `LEAD_RESEARCH_MOCK_MODE`, not a missing key.
+4. **Sources are clickable and safe** — Confirm each source renders as a link (they're `https://example.com/...` fixtures, so they'll load an empty/placeholder page, not error out or execute anything).
+5. **Candidate image approve/reject** — Click "Approve" on one candidate image; confirm its status badge changes to "Approved for mockup" and the button disables. Click "Reject" on the other; confirm a prompt for a reason appears, and the status badge changes to "Rejected." Reject a candidate with an empty/cancelled prompt and confirm it still shows as "Rejected" (not "Pending review") — this is the `rejection_reason` fallback placeholder.
+6. **Invalid asset image renders a placeholder, not a broken request** — Manually set a candidate's `asset_url` to something `sanitizeUrl()` rejects (e.g. `javascript:alert(1)`) via direct Supabase access, reload the report, and confirm the gallery shows "Invalid or unavailable image URL" with no `<img>` tag in the DOM for that card, and that the rest of the panel renders normally.
+7. **Activity log integration** — Confirm `ai_research_started` and `ai_research_completed` rows appear in the lead's existing Activity log panel after a run.
+8. **Duplicate concurrent runs are blocked** — Click "Run AI Research," and before it finishes, trigger a second call (e.g. a second browser tab, or a direct `POST` to `/.netlify/functions/lead-research` with the same `lead_id`). Confirm the second request returns 409 ("AI research is already running for this lead"), not a second report.
+9. **Stale running report recovery** — Manually set an existing report's `status` back to `'running'` and `created_at` to more than 10 minutes ago (direct Supabase access), then click "Run AI Research" for that same lead. Confirm the stale report is now `status='failed'` with `error_classification='provider_timeout'`, and a new report was created and completed normally.
+10. **Non-admin rejection** — Sign in as a non-admin Supabase session (e.g. a customer-portal account) and attempt a direct `POST` to `/.netlify/functions/lead-research` with a valid `lead_id` and that session's access token. Confirm 403.
+11. **Unauthenticated rejection** — Attempt a direct `POST` to the function with no `Authorization` header. Confirm 401.
+12. **Request validation** — Attempt a direct `POST` with a non-UUID `lead_id`, with a UUID for a lead that doesn't exist, with an array body, with `null`, and with an extra property alongside `lead_id`. Confirm each is rejected (400 for shape/format problems, 404 for a well-formed but nonexistent lead), with no report row created for any of them.
+13. **RLS blocks a forged report (direct API bypass)** — While signed in as an admin, attempt a direct `INSERT` into `lead_research_reports` (or `lead_research_sources`) via the Supabase REST API. Confirm it is rejected — there is no browser-facing `INSERT` policy on either table, and `begin_/complete_/fail_lead_research_run()` are not callable by `authenticated` at all.
+14. **Asset review RPC is scoped correctly** — Attempt a direct `PATCH` on a `lead_asset_candidates` row via the REST API (bypassing `review_lead_asset_candidate()`). Confirm it is rejected. Then call the RPC directly with a nonexistent `p_asset_id`; confirm a clear "not found" error rather than a silent no-op.
+15. **Child-row consistency is enforced** — Attempt a direct `INSERT` into `lead_research_sources` (as service role, e.g. via the SQL editor) with a `report_id` that belongs to lead A but a `lead_id` naming lead B. Confirm the composite foreign key rejects it.
+16. **`complete_lead_research_run()` rejects non-array JSON inputs** — Call the RPC directly (service role / SQL editor) against a `running` report with `p_sources` set to SQL `NULL`, then to JSON `null`, then to a JSON object (`{}`), then to a string, then to a number. Confirm each is rejected with a clear exception rather than silently completing with zero source rows; repeat for `p_asset_candidates`. Confirm a genuine empty array (`[]`) for either parameter *does* complete successfully with zero child rows.
+17. **A failed `fail_lead_research_run()` call doesn't crash the response or log anything unsafe** — Hard to trigger directly without simulating a Supabase outage; at minimum, read through `lead-research.js`'s `catch` block and confirm by inspection that a `failRpcError` from that call only ever produces one `console.error` with `{ classification, report_id, lead_id, fail_rpc: "fail_rpc_write_failed" }` and that the function still returns the friendly message for the *original* failure — never the raw Supabase error, and never a different response shape.
+18. **Live mode, once `OPENAI_API_KEY` is set** — See "Adding `OPENAI_API_KEY`" under Netlify Environment Variables below; do this only after the mock-mode checklist above passes and only with `LEAD_RESEARCH_MOCK_MODE` unset or `false`.
+
+### Assumptions and open issues from this phase
+
+- The real OpenAI Responses API path (`runOpenAiResearch()` / `validateAndBuildResearchResult()` / `extractCitationUrls()` in `lead-research.js`) has never been exercised against the live API in this environment — no `OPENAI_API_KEY` was configured, and this phase's instructions explicitly forbade calling a paid API during implementation. The endpoint, `tools: [{ type: "web_search" }]`, `text.format` structured-output shape, and — most importantly — the citation/annotation shape `extractCitationUrls()` expects all reflect the Responses API's documented contract as of this writing; confirm against current OpenAI docs and do one small live test (a cheap model, one lead) before relying on it. If the citation shape is wrong, every fact-bearing real report will fail validation loudly (fail closed) rather than silently saving unverified sources — see "Source citation cross-checking" above.
+- Netlify Functions have a synchronous execution time limit (10 seconds on the default plan, longer on higher tiers). The OpenAI fetch itself is capped at 25 seconds via `AbortSignal.timeout()`, which may already exceed some plans' function ceiling — if real runs start hitting the platform's own timeout (not the 25s abort) in practice, moving this function to a Netlify Background Function (different invocation/response model) is the natural next step. `begin_lead_research_run()`'s 10-minute stale-report recovery (see above) means a platform-level kill no longer permanently blocks that lead's research even before that migration happens.
+- `OPENAI_RESEARCH_MODEL` is an optional env var (defaults to `"gpt-4.1"` in code) for picking which OpenAI model performs the research once a key is added — not required for mock mode, and only used as a fallback if the OpenAI response itself doesn't report which model actually served the request.
+- There is no report history UI — `getLatestResearchReport()` only ever surfaces the most recent report per lead. Older reports (and their sources/asset candidates) remain in the database and in the lead's Activity log, just not browsable as a list yet.
+- No re-run confirmation dialog exists — clicking "Run AI Research" again on a lead that already has a completed report simply starts a new one (the old report and its sources/assets remain in the database; only the newest is shown). Acceptable for Phase 2A's manual, single-admin testing; worth reconsidering if this becomes a heavily-used feature with a cost per run.
+- Fact-specific citation coverage (see "Source citation cross-checking" above) trusts the model's own `supports_fields` tagging on each source — it confirms a source is a real citation and that its claimed field tags are all from the approved vocabulary, but it does not independently verify that the source's actual page content genuinely discusses the specific field it claims to support (e.g. a real, cited page that happens to be tagged `"phone"` when it doesn't actually mention a phone number). Catching that would require fetching and parsing the cited page's own content, which is out of scope for Phase 2A.
+- `isSafeHttpsUrl()`'s private/loopback/reserved-range rejection relies on two separate `net.BlockList` instances to work around a mixed-IPv4/IPv6 `BlockList` quirk observed on the Node version this was developed against (see "URL safety hardening" above) — worth re-verifying (and potentially collapsing back to one instance) against whatever Node version Netlify's function runtime actually uses, and again on any future Node upgrade.
+
 ## Files Changed During This Session
 
 - `admin.css`
@@ -354,6 +568,16 @@ set email = excluded.email, role = excluded.role;
 
 Important: applying launch RLS without the `admin_users` row will block admin access to protected data.
 
+If you are also applying the Lead Engine, run these two (in order) after the launch schema above:
+
+```sql
+-- Use the full file contents, in this order:
+supabase-lead-engine-schema.sql
+supabase-lead-research-schema.sql
+```
+
+`supabase-lead-research-schema.sql` (Phase 2A — AI research reports) depends on tables and functions created by both `supabase-launch-schema.sql` and `supabase-lead-engine-schema.sql`, so it must be applied last.
+
 ## Netlify Environment Variables To Set Later
 
 - `STRIPE_SECRET_KEY`
@@ -361,8 +585,21 @@ Important: applying launch RLS without the `admin_users` row will block admin ac
 - `SITE_URL`
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
+- `OPENAI_API_KEY` (Lead Engine Phase 2A — AI research reports; see below)
+- `OPENAI_RESEARCH_MODEL` (optional, Phase 2A; defaults to `gpt-4.1` in code if unset)
+- `LEAD_RESEARCH_MOCK_MODE` (Lead Engine Phase 2A — explicit mock-fixture testing; see below)
 
-`SUPABASE_SERVICE_ROLE_KEY` is server-side only for Netlify Functions. Do not add it to `supabase-client.js` or any browser file.
+`SUPABASE_SERVICE_ROLE_KEY` is server-side only for Netlify Functions. Do not add it to `supabase-client.js` or any browser file. The same applies to `OPENAI_API_KEY` — it is read only by `netlify/functions/lead-research.js` via `process.env` and must never be placed in browser code. `LEAD_RESEARCH_MOCK_MODE` is not a secret, but it is still server-side-only (read from `process.env` in the Netlify Function) — there is no browser-facing way to request mock mode, and a request cannot ask for it either (see "Explicit mock mode" in the Phase 2A section above).
+
+**Mock-mode testing (`LEAD_RESEARCH_MOCK_MODE`):** set it to the literal string `true` (case-insensitive; anything else, including unset, leaves it off) to exercise the full save/render/approve-reject workflow with zero network calls and zero cost, without `OPENAI_API_KEY` configured at all. **Important:** unlike the phase's first draft, a missing `OPENAI_API_KEY` no longer implicitly triggers mock mode — with neither `LEAD_RESEARCH_MOCK_MODE=true` nor `OPENAI_API_KEY` set, "Run AI Research" now fails with a clear configuration error and creates no report row, rather than silently generating fake research. See "Local testing with Netlify Dev" in the Phase 2A section above for how to actually set this locally (a plain static server can't run the function at all).
+
+**Adding `OPENAI_API_KEY` (Phase 2A):**
+
+1. Confirm `supabase-lead-research-schema.sql` has been run (see "Supabase SQL To Run" above) — the research report tables and the three server-only RPCs (`begin_/complete_/fail_lead_research_run`) must exist before any run, mock or real, can save.
+2. In the Netlify dashboard, add `OPENAI_API_KEY` (and optionally `OPENAI_RESEARCH_MODEL`) as environment variables. Make sure `LEAD_RESEARCH_MOCK_MODE` is **not** set to `true` in that same environment — explicit mock mode always wins over a configured key (see "Explicit mock mode" above), so a stray `LEAD_RESEARCH_MOCK_MODE=true` left over from testing would silently keep producing mock reports even with a real key present. Redeploy so the function picks up the new environment.
+3. Before relying on it for real leads, do one small live test: click "Run AI Research" on a single lead and confirm the saved report actually came from OpenAI (`model_used` will be the model the API actually reports, not `mock-fixture-v1`, and `is_mock` will be `false`) and that the shape matches what `lead-detail.html` expects (see "Research-report JSON structure" in the Phase 2A section above). Pay particular attention to whether any sources were saved at all — if `extractCitationUrls()`'s assumed annotation shape doesn't match what the live API actually returns, every fact-bearing report will fail with `research_validation_failed` (a loud, safe failure — see "Source citation cross-checking" above) rather than silently saving unverified sources, so a validation failure on the first live test is a signal to check that shape, not necessarily a broken key.
+4. If real research calls start hitting Netlify's own platform-level timeout (distinct from the 25-second `AbortSignal` timeout already built into the OpenAI fetch itself), the next step is converting this function to a Netlify Background Function — not done in this phase. `begin_lead_research_run()`'s 10-minute stale-report recovery means a platform-level kill no longer permanently blocks that lead's research even before that migration happens.
+5. To go back to mock-fixture testing later, explicitly set `LEAD_RESEARCH_MOCK_MODE=true` — simply removing `OPENAI_API_KEY` is no longer sufficient on its own (see "Important" note above).
 
 ## Stripe Setup Still Needed
 

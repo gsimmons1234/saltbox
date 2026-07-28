@@ -139,6 +139,80 @@
         </article>
 
         <article class="panel wide">
+          <header class="panel-head">
+            <div><h2 class="panel-title">AI Research Report</h2><p class="panel-subtitle">Server-side AI business research with source-backed findings</p></div>
+            <div class="button-row">
+              <span class="muted" id="researchLastRun"></span>
+              <button class="button-link primary" id="runResearchBtn" type="button">Run AI Research</button>
+            </div>
+          </header>
+          <div class="panel-body">
+            <p class="form-status" id="researchStatus" role="status" aria-live="polite"></p>
+            <p class="empty visible" id="researchEmpty">No AI research has been run for this lead yet.</p>
+            <div id="researchContent" hidden>
+              <p class="notice" id="researchMockNotice" hidden><strong>Mock data.</strong> This report was generated with <code>LEAD_RESEARCH_MOCK_MODE</code> explicitly enabled on the server — no live research or paid API call was made.</p>
+              <p class="notice error" id="researchFailedNotice" hidden></p>
+
+              <div class="research-block">
+                <h3>Business summary</h3>
+                <p id="researchSummary"></p>
+              </div>
+
+              <div class="research-block">
+                <h3>Verified details</h3>
+                <div class="meta-list" id="researchVerifiedDetails"></div>
+              </div>
+
+              <div class="research-block">
+                <h3>Activity evidence</h3>
+                <div id="researchActivityEvidence"></div>
+              </div>
+
+              <div class="research-block">
+                <h3>Website &amp; online presence</h3>
+                <div id="researchWebsiteFindings"></div>
+              </div>
+
+              <div class="research-block">
+                <h3>Brand &amp; visual cues</h3>
+                <div id="researchBrandCues"></div>
+              </div>
+
+              <div class="research-block">
+                <h3>Recommended customer action</h3>
+                <p id="researchRecommendedAction"></p>
+              </div>
+
+              <div class="research-block">
+                <h3>Personalization detail</h3>
+                <p id="researchPersonalization"></p>
+              </div>
+
+              <div class="research-block">
+                <h3>Missing or conflicting information</h3>
+                <ul class="research-list" id="researchGaps"></ul>
+              </div>
+
+              <div class="research-block">
+                <h3>Mockup creative brief</h3>
+                <div id="researchMockupBrief"></div>
+              </div>
+
+              <div class="research-block">
+                <h3>Sources</h3>
+                <div class="note-list" id="researchSources"></div>
+              </div>
+
+              <div class="research-block">
+                <h3>Candidate images</h3>
+                <p class="panel-subtitle" style="margin:0 0 12px;">For admin review only — nothing here is placed into a mockup automatically.</p>
+                <div class="asset-grid" id="researchAssets"></div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="panel wide">
           <header class="panel-head"><div><h2 class="panel-title">Source records</h2><p class="panel-subtitle">Where each piece of business or contact information came from</p></div></header>
           <div class="panel-body">
             <form id="sourceForm">
@@ -203,12 +277,17 @@
       findDuplicateLeads,
       findOptOutMatches,
       getActivityLog,
+      getLatestResearchReport,
       getLead,
       getLeadSources,
+      getResearchAssetCandidates,
+      getResearchSources,
       leadDetailUrl,
       leadStatusClass,
       markLeadDuplicate,
       optOutLead,
+      reviewAssetCandidate,
+      runLeadResearch,
       sanitizeUrl,
       updateLead,
     } from "./leads.js";
@@ -393,6 +472,187 @@
       return rows;
     }
 
+    function researchListItems(values) {
+      if (!values || !values.length) return "";
+      return `<ul class="research-list">${values.map((value) => `<li>${html(value)}</li>`).join("")}</ul>`;
+    }
+
+    function researchTags(values) {
+      if (!values || !values.length) return '<span class="muted">None noted.</span>';
+      return `<div class="tag-row">${values.map((value) => `<span class="tag">${html(value)}</span>`).join("")}</div>`;
+    }
+
+    function renderResearchReport(report) {
+      const empty = document.getElementById("researchEmpty");
+      const content = document.getElementById("researchContent");
+      const lastRun = document.getElementById("researchLastRun");
+      const mockNotice = document.getElementById("researchMockNotice");
+      const failedNotice = document.getElementById("researchFailedNotice");
+
+      if (!report) {
+        empty.hidden = false;
+        empty.className = "empty visible";
+        content.hidden = true;
+        lastRun.textContent = "";
+        return;
+      }
+
+      empty.hidden = true;
+      lastRun.textContent = report.completed_at
+        ? `Last researched ${formatDate(report.completed_at).replace("&mdash;", "-")}`
+        : `Started ${formatDate(report.created_at).replace("&mdash;", "-")}`;
+
+      if (report.status === "running") {
+        content.hidden = true;
+        empty.hidden = false;
+        empty.className = "empty visible";
+        empty.textContent = "AI research is currently running for this lead...";
+        return;
+      }
+
+      if (report.status === "failed") {
+        content.hidden = false;
+        mockNotice.hidden = true;
+        failedNotice.hidden = false;
+        failedNotice.textContent = report.error_message || "AI research failed for an unknown reason.";
+        document.querySelectorAll("#researchContent .research-block").forEach((node) => { node.hidden = true; });
+        return;
+      }
+
+      document.querySelectorAll("#researchContent .research-block").forEach((node) => { node.hidden = false; });
+      content.hidden = false;
+      failedNotice.hidden = true;
+      mockNotice.hidden = !report.is_mock;
+
+      document.getElementById("researchSummary").textContent = report.business_summary || "No summary available.";
+
+      const vd = report.verified_details || {};
+      const verifiedRows = [
+        `<div class="meta-row"><span>Phone</span><strong>${html(vd.phone || "Not found")}</strong></div>`,
+        `<div class="meta-row"><span>Email</span><strong>${html(vd.email || "Not found")}</strong></div>`,
+        `<div class="meta-row"><span>Address</span><strong>${html(vd.address || "Not found")}</strong></div>`,
+        `<div class="meta-row"><span>Service area</span><strong>${html(vd.service_area || "Not noted")}</strong></div>`,
+        `<div class="meta-row"><span>Services</span><strong>${html((vd.services || []).join(", ") || "None noted")}</strong></div>`,
+        `<div class="meta-row"><span>Hours</span><strong>${html(vd.hours || "Not confirmed")}</strong></div>`,
+      ];
+      document.getElementById("researchVerifiedDetails").innerHTML = verifiedRows.join("") +
+        (vd.hours_conflict ? `<p class="notice error" style="margin-top:12px;">${html(vd.hours_conflict)}</p>` : "");
+
+      const ae = report.activity_evidence || {};
+      document.getElementById("researchActivityEvidence").innerHTML =
+        `<p><span class="status ${ae.appears_active ? "won" : "danger"}">${ae.appears_active ? "Appears active" : "Activity not confirmed"}</span></p>` +
+        researchListItems(ae.signals);
+
+      const wf = report.website_findings || {};
+      const presenceLabels = {
+        dedicated_website: "Dedicated website",
+        social_only: "Social-only presence",
+        no_website_found: "No website found",
+      };
+      document.getElementById("researchWebsiteFindings").innerHTML =
+        `<p><span class="status new">${html(presenceLabels[wf.presence_type] || "Unknown")}</span>${wf.website_url ? ` ${renderLink(wf.website_url)}` : ""}</p>` +
+        (wf.observations && wf.observations.length ? `<p class="muted" style="margin-top:10px;">Observations</p>${researchListItems(wf.observations)}` : "") +
+        (wf.homepage_opportunities && wf.homepage_opportunities.length ? `<p class="muted" style="margin-top:10px;">Homepage opportunities</p>${researchListItems(wf.homepage_opportunities)}` : "");
+
+      const bc = report.brand_cues || {};
+      document.getElementById("researchBrandCues").innerHTML =
+        `<p class="muted">Personality</p>${researchTags(bc.personality)}` +
+        `<p class="muted" style="margin-top:10px;">Colors</p>${researchTags(bc.colors)}` +
+        (bc.notes ? `<p style="margin-top:10px;">${html(bc.notes)}</p>` : "");
+
+      document.getElementById("researchRecommendedAction").textContent = report.recommended_customer_action || "Not available.";
+      document.getElementById("researchPersonalization").textContent = report.personalization_detail || "Not available.";
+
+      const gaps = report.missing_or_conflicting_information || [];
+      document.getElementById("researchGaps").innerHTML = gaps.length
+        ? gaps.map((value) => `<li>${html(value)}</li>`).join("")
+        : "<li class=\"muted\">Nothing flagged.</li>";
+
+      const mb = report.mockup_brief || {};
+      document.getElementById("researchMockupBrief").innerHTML =
+        `<p>${html(mb.concept_direction || "Not available.")}</p>` +
+        (mb.tone ? `<p class="muted" style="margin-top:8px;">Tone: ${html(mb.tone)}</p>` : "") +
+        (mb.key_sections && mb.key_sections.length ? `<p class="muted" style="margin-top:10px;">Key sections</p>${researchListItems(mb.key_sections)}` : "") +
+        (mb.must_avoid && mb.must_avoid.length ? `<p class="muted" style="margin-top:10px;">Must avoid</p>${researchListItems(mb.must_avoid)}` : "");
+    }
+
+    function renderResearchSources(rows) {
+      const list = document.getElementById("researchSources");
+      if (!rows.length) {
+        list.innerHTML = '<p class="empty visible">No sources recorded.</p>';
+        return;
+      }
+      list.innerHTML = rows.map((row) => `
+        <article class="note-item">
+          <div class="note-meta">${html(row.source_type)}${row.supports_fields && row.supports_fields.length ? ` &middot; supports: ${html(row.supports_fields.join(", "))}` : ""}</div>
+          <p>${renderLink(row.source_url, row.source_title || row.source_url)}${row.notes ? ` &mdash; ${html(row.notes)}` : ""}</p>
+        </article>
+      `).join("");
+    }
+
+    function renderResearchAssets(rows) {
+      const grid = document.getElementById("researchAssets");
+      if (!rows.length) {
+        grid.innerHTML = '<p class="empty visible">No candidate images found.</p>';
+        return;
+      }
+      grid.innerHTML = rows.map((row) => {
+        const safeAssetUrl = sanitizeUrl(row.asset_url);
+        // Never render <img src=""> for an invalid/unsafe URL — an empty
+        // src re-requests the current page in most browsers. Skip the <img>
+        // entirely and show a visible placeholder instead; a URL that looks
+        // valid but 404s/fails to load at runtime still falls back to the
+        // same placeholder via onerror, without breaking the rest of the
+        // candidate-image gallery or the panel around it.
+        const thumb = safeAssetUrl
+          ? `<img src="${html(safeAssetUrl)}" alt="${html(row.description || row.asset_type || "Candidate image")}" loading="lazy" onerror="this.closest('.asset-thumb').classList.add('broken')">`
+          : "";
+        const thumbClass = safeAssetUrl ? "asset-thumb" : "asset-thumb broken";
+        return `
+        <article class="asset-card" data-asset-id="${html(row.id)}">
+          <div class="${thumbClass}">${thumb}</div>
+          <div class="asset-body">
+            <p class="note-meta">${html(row.asset_type || "other")}</p>
+            <p>${html(row.description || "No description provided.")}</p>
+            <p class="muted">${html(row.ownership_context || "Ownership context not noted.")}</p>
+            <p>${renderLink(row.source_page_url, "View source page")}</p>
+            <p class="asset-status">${row.approved_for_mockup ? '<span class="status won">Approved for mockup</span>' : row.rejection_reason ? `<span class="status danger">Rejected</span>` : '<span class="status new">Pending review</span>'}</p>
+            <div class="button-row">
+              <button class="button-link" type="button" data-approve-asset="${html(row.id)}" ${row.approved_for_mockup ? "disabled" : ""}>Approve</button>
+              <button class="button-link" type="button" data-reject-asset="${html(row.id)}" ${row.rejection_reason && !row.approved_for_mockup ? "disabled" : ""}>Reject</button>
+            </div>
+          </div>
+        </article>
+      `;
+      }).join("");
+    }
+
+    async function refreshResearch() {
+      let report = null;
+      try {
+        report = await getLatestResearchReport(leadId);
+      } catch (error) {
+        setStatus("researchStatus", error.message || "Could not load the AI research report.", "error");
+      }
+      renderResearchReport(report);
+
+      if (report && report.status === "complete") {
+        try {
+          const [sources, assets] = await Promise.all([
+            getResearchSources(report.id),
+            getResearchAssetCandidates(report.id),
+          ]);
+          renderResearchSources(sources);
+          renderResearchAssets(assets);
+        } catch (error) {
+          setStatus("researchStatus", error.message || "Could not load research sources or images.", "error");
+        }
+      } else {
+        renderResearchSources([]);
+        renderResearchAssets([]);
+      }
+    }
+
     if (!admin.redirecting && !leadId) {
       document.getElementById("pageTitle").textContent = "Lead unavailable";
       document.getElementById("pageSubtitle").textContent = "Missing lead id.";
@@ -401,7 +661,7 @@
     } else if (!admin.redirecting) {
       try {
         fillLead(await getLead(leadId));
-        await Promise.all([refreshSources(), refreshActivity()]);
+        await Promise.all([refreshSources(), refreshActivity(), refreshResearch()]);
       } catch (error) {
         document.getElementById("pageTitle").textContent = "Lead unavailable";
         document.getElementById("pageSubtitle").textContent = error.message || "Could not load lead.";
@@ -553,6 +813,53 @@
         button.disabled = false;
         button.textContent = "Mark as duplicate of this lead";
         setStatus("duplicateCheckStatus", error.message || "Could not mark as duplicate.", "error");
+      }
+    });
+
+    document.getElementById("runResearchBtn").addEventListener("click", async () => {
+      const button = document.getElementById("runResearchBtn");
+      if (button.disabled) return;
+      button.disabled = true;
+      button.textContent = "Researching...";
+      setStatus("researchStatus", "Running AI research - this may take a moment...");
+
+      try {
+        const result = await runLeadResearch(lead.id);
+        await refreshResearch();
+        await refreshActivity();
+        setStatus(
+          "researchStatus",
+          result.is_mock ? "Research complete (mock fixture data)." : "Research complete.",
+          "success"
+        );
+      } catch (error) {
+        setStatus("researchStatus", error.message || "Could not run AI research.", "error");
+        await refreshResearch();
+      } finally {
+        button.disabled = false;
+        button.textContent = "Run AI Research";
+      }
+    });
+
+    document.getElementById("researchAssets").addEventListener("click", async (event) => {
+      const approveBtn = event.target.closest("[data-approve-asset]");
+      const rejectBtn = event.target.closest("[data-reject-asset]");
+      const button = approveBtn || rejectBtn;
+      if (!button) return;
+
+      let rejectionReason = null;
+      if (rejectBtn) {
+        rejectionReason = window.prompt("Reason for rejecting this candidate image (optional):") || null;
+      }
+
+      button.disabled = true;
+      try {
+        await reviewAssetCandidate(button.dataset.approveAsset || button.dataset.rejectAsset, Boolean(approveBtn), rejectionReason);
+        await refreshResearch();
+        setStatus("researchStatus", approveBtn ? "Image approved for mockup." : "Image rejected.", "success");
+      } catch (error) {
+        button.disabled = false;
+        setStatus("researchStatus", error.message || "Could not update this candidate image.", "error");
       }
     });
 
